@@ -7,7 +7,7 @@
 
 1. https://github.com/new を開く(YuzuAtelierアカウントでログイン)
 2. 次のように入力:
-   - Repository name: `tabi-budget`
+   - Repository name: `tabi-saifu`
    - Public を選択(GitHub PagesはPublicで無料)
    - **「Add a README file」等のチェックは全部オフのまま**(ローカルに既にあるため)
 3. **Create repository** をクリック
@@ -20,7 +20,7 @@
 このフォルダでターミナル(またはClaude Code)から:
 
 ```
-git remote add origin https://github.com/YuzuAtelier/tabi-budget.git
+git remote add origin https://github.com/YuzuAtelier/tabi-saifu.git
 git push -u origin main
 ```
 
@@ -31,7 +31,7 @@ git push -u origin main
 1. リポジトリの **Settings → Pages** を開く
 2. Source: **Deploy from a branch**
 3. Branch: **main** / フォルダ: **/(root)** を選んで **Save**
-4. 1〜2分待つと `https://yuzuatelier.github.io/tabi-budget/` で公開されます
+4. 1〜2分待つと `https://yuzuatelier.github.io/tabi-saifu/` で公開されます
 
 ## 4. スマホにインストールする
 
