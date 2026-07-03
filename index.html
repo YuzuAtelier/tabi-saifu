@@ -585,6 +585,14 @@ function symbolOf(trip, code) {
   const c = (trip.currencies || []).find((x) => x.code === code);
   return c ? (c.symbol || c.name) : (code === 'JPY' ? '¥' : code);
 }
+/* 通貨記号を数字の後ろに置く通貨(例: 人民元は「3,560元」であって「元3,560」ではない) */
+const SUFFIX_CURRENCIES = new Set(['CNY']);
+/* 金額+通貨記号を自然な語順で組み立てる(前置/後置を通貨ごとに切り替え) */
+function fmtCurrencyAmount(trip, code, amount) {
+  const sym = esc(symbolOf(trip, code));
+  const num = fmtMoney(amount, code);
+  return SUFFIX_CURRENCIES.has(code) ? `${num}${sym}` : `${sym}${num}`;
+}
 
 /* =========================================================
  * ルーター(ハッシュベース、パラメータ対応)
@@ -1102,11 +1110,10 @@ async function renderBudgetList(params) {
   /* showCat=true: 行にカテゴリの絵文字と名前を出す(日付順表示用) */
   const rowHtml = (it, showCat) => {
     const cat = catMap[it.categoryId];
-    const sym = symbolOf(trip, it.currency);
     const parts = [];
     if (!showCat && it.date) parts.push(fmtDate(it.date));
     if (showCat && cat) parts.push(cat.name);
-    if (it.quantity > 1) parts.push(`${sym}${fmtMoney(it.unitPrice, it.currency)} × ${it.quantity}`);
+    if (it.quantity > 1) parts.push(`${fmtCurrencyAmount(trip, it.currency, it.unitPrice)} × ${it.quantity}`);
     if (it.memo) parts.push(esc(it.memo));
     return `
         <button class="row-btn" data-id="${esc(it.id)}">
@@ -1115,7 +1122,7 @@ async function renderBudgetList(params) {
             <span class="row-title">${esc(it.title) || (cat ? esc(cat.name) : '')}</span>
             ${parts.length ? `<span class="row-sub">${parts.join('・')}</span>` : ''}
           </span>
-          <span class="row-amount">${sym}${fmtMoney(it.amount, it.currency)}
+          <span class="row-amount">${fmtCurrencyAmount(trip, it.currency, it.amount)}
             ${it.currency === 'JPY' ? '' : `<span class="jpy">≈ ¥${fmtMoney(toJPY(it))}</span>`}
           </span>
         </button>`;
@@ -1162,8 +1169,8 @@ async function renderBudgetList(params) {
     </div>
     ${items.length ? `
     <div class="seg" style="margin:14px 0 0">
-      <button type="button" data-s="category" class="${sortMode === 'category' ? 'active' : ''}">カテゴリ別</button>
       <button type="button" data-s="date" class="${sortMode === 'date' ? 'active' : ''}">日付順</button>
+      <button type="button" data-s="category" class="${sortMode === 'category' ? 'active' : ''}">カテゴリ別</button>
     </div>` : ''}
     ${items.length ? sections : `
       <div class="card empty-state" style="margin-top:16px">
@@ -1252,7 +1259,8 @@ async function renderBudgetForm(params) {
     const code = q('#b-cur').value || 'JPY';
     const amt = currentAmount();
     const sym = symbolOf(trip, code);
-    let text = `合計: ${sym}${fmtMoney(amt, code)}`;
+    const numStr = fmtMoney(amt, code);
+    let text = `合計: ${SUFFIX_CURRENCIES.has(code) ? `${numStr}${sym}` : `${sym}${numStr}`}`;
     if (code !== 'JPY') text += `(≈ ¥${fmtMoney(amt * rateFor(trip, code, 'budget'))})`;
     q('#calc').textContent = text;
   }
@@ -1392,7 +1400,6 @@ async function renderExpenseList(params) {
   /* showCat=true: カテゴリの絵文字と名前を表示(日付順用)/ false: 日付を表示(カテゴリ別用) */
   const rowInner = (it, showCat) => {
     const cat = catMap[it.categoryId];
-    const sym = symbolOf(trip, it.currency);
     const parts = [];
     if (!showCat && it.date) parts.push(fmtDate(it.date));
     if (showCat && cat) parts.push(cat.name);
@@ -1403,7 +1410,7 @@ async function renderExpenseList(params) {
             <span class="row-title">${esc(it.title) || (cat ? esc(cat.name) : '')}</span>
             ${parts.length ? `<span class="row-sub">${parts.join('・')}</span>` : ''}
           </span>
-          <span class="row-amount ${it.amount < 0 ? 'amount-minus' : ''}">${sym}${fmtMoney(it.amount, it.currency)}
+          <span class="row-amount ${it.amount < 0 ? 'amount-minus' : ''}">${fmtCurrencyAmount(trip, it.currency, it.amount)}
             ${it.currency === 'JPY' ? '' : `<span class="jpy">≈ ¥${fmtMoney(jpyOf(it))}</span>`}
           </span>`;
   };
@@ -1609,7 +1616,8 @@ async function renderExpenseForm(params) {
     const qty = parseFloat(q('#e-qty').value) || 0;
     const amt = price * qty;
     const sym = symbolOf(trip, selCur);
-    let text = `合計: ${sym}${fmtMoney(amt, selCur)}`;
+    const numStr = fmtMoney(amt, selCur);
+    let text = `合計: ${SUFFIX_CURRENCIES.has(selCur) ? `${numStr}${sym}` : `${sym}${numStr}`}`;
     if (selCur !== 'JPY') text += `(≈ ¥${fmtMoney(amt * rateFor(trip, selCur, 'actual'))})`;
     q('#calc').textContent = text;
   }
@@ -1809,6 +1817,9 @@ async function renderCashList(params) {
 
   const sections = foreign.map((cur) => {
     const sym = cur.symbol || cur.code;
+    /* 符号(+/−)は先頭に置き、金額+記号は通貨ごとの自然な語順で組み立てる */
+    const fmtAmt = (n) => SUFFIX_CURRENCIES.has(cur.code)
+      ? `${fmtMoney(n, cur.code)}${esc(sym)}` : `${esc(sym)}${fmtMoney(n, cur.code)}`;
     /* 入金(両替等)と現金支出をまとめ、通帳のように残高を計算する。
        並び順: 日付(古い順)→ 同日内は 両替・キャッシング → 支出(記録順) → 残高調整 */
     const rank = { in: 0, out: 1, adjust: 2 };
@@ -1847,8 +1858,8 @@ async function renderCashList(params) {
             <span class="row-title">${title}</span>
             ${sub ? `<span class="row-sub">${sub}</span>` : ''}
           </span>
-          <span class="row-amount ${plus ? 'amount-plus' : 'amount-minus'}">${plus ? '+' : '−'}${esc(sym)}${fmtMoney(Math.abs(delta), cur.code)}
-            <span class="jpy">残高 ${esc(sym)}${fmtMoney(bal, cur.code)}</span>
+          <span class="row-amount ${plus ? 'amount-plus' : 'amount-minus'}">${plus ? '+' : '−'}${fmtAmt(Math.abs(delta))}
+            <span class="jpy">残高 ${fmtAmt(bal)}</span>
           </span>
         </button>`;
     };
@@ -1858,15 +1869,15 @@ async function renderCashList(params) {
     const dayCards = dates.map((d) => {
       const rows = timeline.filter((t) => t.e.date === d).map(rowHtml).join('');
       return `
-        <div class="date-head"><span class="dh-date">${fmtDateFull(d)}</span><span class="dh-sum">残高 ${esc(sym)}${fmtMoney(bal, cur.code)}</span></div>
+        <div class="date-head"><span class="dh-date">${fmtDateFull(d)}</span><span class="dh-sum">残高 ${fmtAmt(bal)}</span></div>
         <div class="card" style="padding:6px 16px">${rows}</div>`;
     }).join('');
 
     const balJPY = bal * rateFor(trip, cur.code, 'actual');
     return `
       <div class="card" style="margin-top:16px">
-        <div class="ct-row"><span class="ct-label">${esc(sym)} ${esc(cur.name)}の財布</span></div>
-        <div class="ct-amounts ${bal < 0 ? 'amount-minus' : ''}">${esc(sym)}${fmtMoney(bal, cur.code)}<span class="ct-slash"> ≈ ¥${fmtMoney(balJPY)}</span></div>
+        <div class="ct-row"><span class="ct-label">${SUFFIX_CURRENCIES.has(cur.code) ? '' : `${esc(sym)} `}${esc(cur.name)}の財布</span></div>
+        <div class="ct-amounts ${bal < 0 ? 'amount-minus' : ''}">${fmtAmt(bal)}<span class="ct-slash"> ≈ ¥${fmtMoney(balJPY)}</span></div>
         ${bal < 0 ? '<div class="ct-remain over">⚠️ 残高がマイナスです。両替・キャッシングの記録漏れがないか確認してください</div>' : ''}
       </div>
       ${dayCards || '<p class="hint" style="margin-top:8px">まだ入出金がありません。「＋」から両替やキャッシングを記録しましょう</p>'}`;
@@ -2374,7 +2385,7 @@ async function renderSettings() {
       <button class="settings-item" id="si-sync"><span class="s-icon">📤</span><span class="s-label">スプレッドシート同期</span><span class="badge-soon" id="sync-badge">›</span></button>
     </div>
     <div class="about">
-      <div>旅財布 v1.0.1</div>
+      <div>旅財布 v1.0.2</div>
       <div class="storage" id="storage-info">ストレージ使用量を確認中…</div>
       <div class="storage" id="sw-info"></div>
     </div>`;
