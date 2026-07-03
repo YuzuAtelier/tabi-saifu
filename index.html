@@ -1,0 +1,2362 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e7490">
+<title>旅財布 — 旅の予算と記録</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="旅財布">
+<style>
+  /* ===== デザイントークン ===== */
+  :root {
+    --c-primary: #0e7490;        /* 深いティール(海) */
+    --c-primary-dark: #155e75;
+    --c-sky: #38bdf8;            /* 空色 */
+    --c-accent: #f97316;         /* 夕日のオレンジ(アクセント) */
+    --c-bg: #f6f8fa;
+    --c-card: #ffffff;
+    --c-text: #1e293b;
+    --c-text-sub: #64748b;
+    --c-line: #e2e8f0;
+    --c-danger: #dc2626;
+    --radius: 16px;
+    --shadow: 0 2px 8px rgba(15, 23, 42, .08);
+    --header-h: 56px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto,
+                 "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    background: var(--c-bg);
+    color: var(--c-text);
+    line-height: 1.6;
+    min-height: 100dvh;
+  }
+
+  /* ===== ヘッダー ===== */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    height: calc(var(--header-h) + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    background: linear-gradient(135deg, var(--c-sky), var(--c-primary));
+    color: #fff;
+    display: flex; align-items: center;
+    box-shadow: var(--shadow);
+  }
+  .header-inner {
+    width: 100%; max-width: 640px; margin: 0 auto;
+    padding: 0 16px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .app-title { font-size: 18px; font-weight: 700; letter-spacing: .02em; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .app-title .plane { font-size: 20px; }
+  .app-title #header-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .icon-btn {
+    background: rgba(255,255,255,.15); border: none; color: #fff;
+    width: 38px; height: 38px; border-radius: 50%;
+    font-size: 19px; cursor: pointer; flex-shrink: 0;
+    display: grid; place-items: center;
+    transition: background .15s;
+  }
+  .icon-btn:active { background: rgba(255,255,255,.35); }
+
+  /* ===== メイン ===== */
+  main {
+    max-width: 640px; margin: 0 auto;
+    padding: 16px 16px calc(96px + env(safe-area-inset-bottom));
+  }
+  .view { animation: fadein .18s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  h2.section-title {
+    font-size: 14px; color: var(--c-text-sub); font-weight: 600;
+    margin: 20px 0 8px; display: flex; align-items: center; gap: 6px;
+  }
+  .card {
+    background: var(--c-card); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 20px;
+  }
+  .back-row { margin-bottom: 12px; }
+  .btn-back {
+    background: none; border: none; color: var(--c-primary);
+    font-size: 14px; font-weight: 600; cursor: pointer; padding: 4px 0;
+  }
+
+  /* ===== ボタン ===== */
+  .btn-primary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: linear-gradient(135deg, var(--c-accent), #fb923c);
+    color: #fff; border: none; border-radius: 999px;
+    font-size: 15px; font-weight: 700; padding: 12px 28px;
+    cursor: pointer; box-shadow: 0 4px 12px rgba(249, 115, 22, .35);
+    transition: transform .1s;
+  }
+  .btn-primary:active { transform: scale(.97); }
+  .btn-secondary {
+    padding: 12px 20px; border-radius: 999px; border: 1.5px solid var(--c-line);
+    background: #fff; color: var(--c-text); font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .btn-danger-ghost {
+    width: 100%; margin-top: 14px; padding: 12px; border-radius: 999px;
+    border: 1.5px solid #fecaca; background: #fff; color: var(--c-danger);
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .fab {
+    position: fixed; right: 20px; bottom: calc(24px + env(safe-area-inset-bottom));
+    width: 58px; height: 58px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--c-accent), #fb923c);
+    color: #fff; font-size: 28px; line-height: 1; border: none; cursor: pointer;
+    box-shadow: 0 6px 16px rgba(249, 115, 22, .4);
+    display: grid; place-items: center; z-index: 5;
+    transition: transform .1s;
+  }
+  .fab:active { transform: scale(.94); }
+
+  /* ===== ホーム: 空状態 ===== */
+  .empty-state { text-align: center; padding: 40px 20px; }
+  .empty-state .art { font-size: 56px; line-height: 1; margin-bottom: 16px; }
+  .empty-state p.lead { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .empty-state p.sub { font-size: 13px; color: var(--c-text-sub); margin-bottom: 24px; }
+
+  /* ===== ホーム: 旅行カード ===== */
+  .trip-card {
+    display: block; width: 100%; text-align: left;
+    background: var(--c-card); border: none; border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 14px 18px 14px 22px; margin-bottom: 12px;
+    cursor: pointer; position: relative; overflow: hidden;
+    font-family: inherit; color: var(--c-text); line-height: 1.6;
+    transition: transform .1s;
+  }
+  .trip-card:active { transform: scale(.985); }
+  .trip-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+    background: linear-gradient(180deg, var(--c-sky), var(--c-primary));
+  }
+  .trip-card.past::before { background: #cbd5e1; }
+  .trip-card.ongoing::before { background: linear-gradient(180deg, var(--c-accent), #fbbf24); }
+  .t-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .t-title { font-size: 16px; font-weight: 700; }
+  .t-meta { font-size: 13px; color: var(--c-text-sub); margin-top: 2px; }
+  .t-badge {
+    font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 10px; white-space: nowrap;
+  }
+  .t-badge.ongoing { background: #fff7ed; color: var(--c-accent); border: 1px solid #fed7aa; }
+  .t-badge.countdown { background: #f0f9ff; color: var(--c-primary); border: 1px solid #bae6fd; }
+  .t-badge.past { background: var(--c-bg); color: var(--c-text-sub); border: 1px solid var(--c-line); }
+
+  /* ===== フォーム ===== */
+  .form-card {
+    background: var(--c-card); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 18px; margin-bottom: 4px;
+  }
+  label.field { display: block; margin-bottom: 14px; min-width: 0; }
+  .f-label { font-size: 12px; font-weight: 600; color: var(--c-text-sub); display: block; margin-bottom: 4px; }
+  input[type=text], input[type=date], input[type=number], input[type=datetime-local], select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--c-line); border-radius: 10px;
+    font-size: 15px; font-family: inherit; background: #fff; color: var(--c-text);
+  }
+  input:focus, select:focus { outline: 2px solid var(--c-sky); border-color: transparent; }
+  .field-row { display: flex; gap: 10px; }
+  .field-row > * { flex: 1; min-width: 0; }
+  .hint { font-size: 12px; color: var(--c-text-sub); margin-bottom: 12px; }
+  .sub-item {
+    border: 1.5px dashed var(--c-line); border-radius: 12px;
+    padding: 14px 12px 2px; margin-bottom: 10px; position: relative;
+  }
+  .btn-remove {
+    position: absolute; top: 4px; right: 4px; z-index: 1;
+    background: none; border: none; color: var(--c-text-sub);
+    font-size: 15px; cursor: pointer; padding: 4px 8px;
+  }
+  .btn-add-row {
+    width: 100%; padding: 10px; border-radius: 10px;
+    border: 1.5px dashed var(--c-primary); background: rgba(14, 116, 144, .04);
+    color: var(--c-primary); font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .form-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .form-actions .btn-secondary { flex: 1; }
+  .form-actions .btn-primary { flex: 2; }
+
+  /* ===== 旅行詳細 ===== */
+  .detail-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .info-row { display: flex; gap: 10px; font-size: 14px; padding: 6px 0; }
+  .info-row .i-icon { width: 22px; text-align: center; flex-shrink: 0; }
+  .info-row .i-body { min-width: 0; }
+  .info-sub { font-size: 12px; color: var(--c-text-sub); }
+  .list-item { padding: 10px 0; border-bottom: 1px solid var(--c-line); font-size: 14px; }
+  .list-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .list-item:first-child { padding-top: 0; }
+  .chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font-size: 13px; background: #f0f9ff; color: var(--c-primary-dark);
+    border: 1px solid #bae6fd; border-radius: 999px; padding: 4px 12px;
+  }
+  .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .menu-tile {
+    background: var(--c-card); border: none; border-radius: 14px;
+    box-shadow: var(--shadow); padding: 16px 8px; text-align: center;
+    cursor: pointer; font-family: inherit; color: var(--c-text);
+    transition: transform .1s;
+  }
+  .menu-tile:active { transform: scale(.96); }
+  .menu-tile .m-icon { font-size: 24px; display: block; margin-bottom: 4px; }
+  .menu-tile .m-label { font-size: 13px; font-weight: 700; }
+  .menu-tile .m-note { font-size: 10px; color: var(--c-text-sub); display: block; }
+
+  /* ===== 設定 ===== */
+  .settings-list { display: flex; flex-direction: column; overflow: hidden;
+    background: var(--c-card); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .settings-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 15px 18px; border: none; border-bottom: 1px solid var(--c-line);
+    background: none; width: 100%; text-align: left;
+    font-size: 15px; font-family: inherit; color: var(--c-text); cursor: pointer;
+  }
+  .settings-item:last-child { border-bottom: none; }
+  .settings-item .s-icon { font-size: 18px; width: 24px; text-align: center; }
+  .settings-item .s-label { flex: 1; }
+  .badge-soon {
+    font-size: 11px; color: var(--c-text-sub);
+    background: var(--c-bg); border: 1px solid var(--c-line);
+    border-radius: 999px; padding: 2px 10px; white-space: nowrap;
+  }
+  .about { margin-top: 20px; text-align: center; font-size: 12px; color: var(--c-text-sub); }
+  .about .storage { margin-top: 4px; }
+
+  /* ===== 入力方式セグメント切替 ===== */
+  .seg { display: flex; background: var(--c-bg); border-radius: 12px; padding: 4px; gap: 4px; margin-bottom: 14px; }
+  .seg button {
+    flex: 1; border: none; background: none; padding: 9px 4px; border-radius: 9px;
+    font-size: 13px; font-weight: 600; color: var(--c-text-sub);
+    cursor: pointer; font-family: inherit; transition: background .15s;
+  }
+  .seg button.active { background: #fff; color: var(--c-primary); box-shadow: var(--shadow); }
+
+  /* ===== 合計カード ===== */
+  .total-card {
+    background: linear-gradient(135deg, var(--c-sky), var(--c-primary));
+    color: #fff; border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow);
+  }
+  .total-card .tc-label { font-size: 12px; opacity: .9; }
+  .total-card .tc-amount { font-size: 28px; font-weight: 800; line-height: 1.3; }
+  .total-card .tc-sub { font-size: 12px; opacity: .9; }
+
+  /* ===== 明細行 ===== */
+  .row-btn {
+    display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 11px 2px; border: none; border-bottom: 1px solid var(--c-line);
+    background: none; font-family: inherit; font-size: 14px; color: var(--c-text);
+    cursor: pointer; text-align: left; line-height: 1.5;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  .row-btn:last-child { border-bottom: none; }
+  .row-main { min-width: 0; }
+  .row-title { font-weight: 600; display: block; }
+  .row-sub { font-size: 12px; color: var(--c-text-sub); display: block; }
+  .row-amount { text-align: right; white-space: nowrap; font-weight: 700; flex-shrink: 0; }
+  .row-amount .jpy { display: block; font-size: 11px; color: var(--c-text-sub); font-weight: 500; }
+  .cat-head { display: flex; justify-content: space-between; align-items: baseline; margin: 18px 2px 6px; }
+  .cat-head .ch-name { font-size: 14px; font-weight: 700; }
+  .cat-head .ch-sum { font-size: 13px; font-weight: 700; color: var(--c-primary-dark); }
+  .calc-line { font-size: 15px; font-weight: 700; color: var(--c-primary-dark); text-align: right; min-height: 24px; }
+
+  /* ===== 旅行情報からの候補チップ ===== */
+  .suggest-label { font-size: 12px; font-weight: 600; color: var(--c-text-sub); margin-bottom: 6px; }
+  .suggest-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .suggest-chip {
+    border: 1.5px dashed var(--c-primary); background: rgba(14, 116, 144, .05);
+    color: var(--c-primary-dark); border-radius: 12px; padding: 7px 12px;
+    font-size: 12px; cursor: pointer; font-family: inherit; text-align: left; line-height: 1.5;
+  }
+  .suggest-chip:active { background: rgba(14, 116, 144, .12); }
+
+  /* ===== クイック入力: カテゴリグリッド・チップ選択 ===== */
+  .catsel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .catsel-btn {
+    border: 1.5px solid var(--c-line); background: #fff; border-radius: 12px;
+    padding: 10px 4px; text-align: center; cursor: pointer;
+    font-family: inherit; color: var(--c-text); transition: border-color .1s, background .1s;
+  }
+  .catsel-btn .ci { font-size: 20px; display: block; line-height: 1.4; }
+  .catsel-btn .cn { font-size: 11px; font-weight: 600; }
+  .catsel-btn.selected { border-color: var(--c-primary); background: #f0f9ff; color: var(--c-primary-dark); }
+  .curline { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .cur-chip {
+    border: 1.5px solid var(--c-line); background: #fff; border-radius: 999px;
+    padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: inherit; color: var(--c-text-sub); transition: border-color .1s, background .1s;
+  }
+  .cur-chip.selected { border-color: var(--c-primary); background: #f0f9ff; color: var(--c-primary-dark); }
+
+  /* ===== 実績一覧 ===== */
+  .total-card.spend { background: linear-gradient(135deg, #fb923c, var(--c-accent)); }
+  .date-head { display: flex; justify-content: space-between; align-items: baseline; margin: 18px 2px 6px; }
+  .date-head .dh-date { font-size: 14px; font-weight: 700; }
+  .date-head .dh-sum { font-size: 13px; font-weight: 700; color: var(--c-primary-dark); }
+  .row-icon { font-size: 18px; flex-shrink: 0; width: 26px; text-align: center; }
+  .amount-minus { color: var(--c-danger); }
+  .amount-plus { color: #059669; }
+
+  /* ===== 比較ダッシュボード ===== */
+  .ct-row { display: flex; justify-content: space-between; align-items: baseline; }
+  .ct-row .ct-label { font-size: 12px; color: var(--c-text-sub); font-weight: 600; }
+  .ct-pct { font-size: 26px; font-weight: 800; color: var(--c-primary-dark); }
+  .ct-pct.over { color: var(--c-danger); }
+  .ct-amounts { font-size: 22px; font-weight: 800; margin: 2px 0 10px; }
+  .ct-slash { font-size: 13px; color: var(--c-text-sub); font-weight: 600; }
+  .ct-remain { margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--c-primary-dark); }
+  .ct-remain.over { color: var(--c-danger); }
+  .cmp-bar-wrap { background: #e8edf2; border-radius: 999px; height: 12px; overflow: hidden; }
+  .cmp-bar-wrap.big { height: 16px; }
+  .cmp-bar {
+    height: 100%; border-radius: 999px; width: 0;
+    transition: width .7s cubic-bezier(.22, 1, .36, 1);
+    background: linear-gradient(90deg, var(--c-sky), var(--c-primary));
+  }
+  .cmp-bar.warn { background: linear-gradient(90deg, #fbbf24, #f97316); }
+  .cmp-bar.over { background: linear-gradient(90deg, #f97316, #dc2626); }
+  .cmp-bar.nobudget { background: #cbd5e1; }
+  .cmp-cat { margin-bottom: 10px; padding: 14px 18px; }
+  .cc-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .cc-name { font-size: 14px; font-weight: 700; }
+  .cc-pct { font-size: 15px; font-weight: 800; color: var(--c-primary-dark); }
+  .cc-pct.over { color: var(--c-danger); }
+  .cc-nums { margin-top: 8px; font-size: 12px; color: var(--c-text-sub); }
+
+  /* ===== カテゴリ管理 ===== */
+  .catm-row { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--c-line); }
+  .catm-row:last-child { border-bottom: none; }
+  .catm-icon { font-size: 18px; width: 26px; text-align: center; flex-shrink: 0; }
+  .catm-name { flex: 1; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini-btn {
+    border: 1px solid var(--c-line); background: #fff; border-radius: 8px;
+    width: 34px; height: 34px; font-size: 14px; cursor: pointer;
+    color: var(--c-text-sub); flex-shrink: 0; font-family: inherit;
+  }
+  .mini-btn:disabled { opacity: .3; }
+
+  /* ===== メモリモード警告バナー ===== */
+  #mem-banner {
+    background: #fef3c7; color: #92400e;
+    font-size: 12px; line-height: 1.5;
+    padding: 8px 16px; text-align: center;
+  }
+
+  /* ===== トースト ===== */
+  #toast {
+    position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom));
+    transform: translateX(-50%) translateY(20px);
+    background: rgba(30, 41, 59, .92); color: #fff;
+    font-size: 13px; padding: 10px 20px; border-radius: 999px;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+    max-width: 86vw; text-align: center; z-index: 20;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="app-title"><span class="plane">✈️</span><span id="header-title">旅財布</span></div>
+    <button class="icon-btn" id="btn-settings" aria-label="設定" title="設定">⚙️</button>
+  </div>
+</header>
+
+<div id="mem-banner" hidden>⚠️ この環境ではデータを保存できません(一時プレビューモード)。スマホやブラウザで開くと保存されます。</div>
+
+<main id="view" aria-live="polite"></main>
+
+<div id="toast" role="status"></div>
+
+<script>
+'use strict';
+
+/* =========================================================
+ * IndexedDB 層
+ * ストア: trips / budgetItems / expenses / categories /
+ *         cashEntries / syncQueue / settings
+ * =======================================================*/
+const DB_NAME = 'tabi-budget';
+const DB_VERSION = 1;
+/* 各ストアの主キー(メモリモードでも使う) */
+const STORE_KEYS = {
+  trips: 'id', budgetItems: 'id', expenses: 'id',
+  categories: 'id', cashEntries: 'id', syncQueue: 'id', settings: 'key',
+};
+
+const db = {
+  _db: null,
+  _mem: null,   /* IndexedDBが使えない環境(サンドボックス等)用の一時メモリストア */
+
+  isMemoryMode() { return !!this._mem; },
+
+  open() {
+    if (this._db || this._mem) return Promise.resolve(this._db);
+    return new Promise((resolve, reject) => {
+      let req;
+      try { req = indexedDB.open(DB_NAME, DB_VERSION); }
+      catch (err) { reject(err); return; }
+      req.onupgradeneeded = (e) => {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains('trips')) {
+          d.createObjectStore('trips', { keyPath: 'id' });
+        }
+        if (!d.objectStoreNames.contains('budgetItems')) {
+          const s = d.createObjectStore('budgetItems', { keyPath: 'id' });
+          s.createIndex('tripId', 'tripId');
+        }
+        if (!d.objectStoreNames.contains('expenses')) {
+          const s = d.createObjectStore('expenses', { keyPath: 'id' });
+          s.createIndex('tripId', 'tripId');
+          s.createIndex('syncStatus', 'syncStatus');
+        }
+        if (!d.objectStoreNames.contains('categories')) {
+          d.createObjectStore('categories', { keyPath: 'id' });
+        }
+        if (!d.objectStoreNames.contains('cashEntries')) {
+          const s = d.createObjectStore('cashEntries', { keyPath: 'id' });
+          s.createIndex('tripId', 'tripId');
+        }
+        if (!d.objectStoreNames.contains('syncQueue')) {
+          d.createObjectStore('syncQueue', { keyPath: 'id' });
+        }
+        if (!d.objectStoreNames.contains('settings')) {
+          d.createObjectStore('settings', { keyPath: 'key' });
+        }
+      };
+      req.onsuccess = () => { this._db = req.result; resolve(this._db); };
+      req.onerror = () => reject(req.error);
+    }).catch((err) => {
+      console.error('IndexedDBが使えないため、一時メモリモードで動作します:', err);
+      this._mem = Object.fromEntries(Object.keys(STORE_KEYS).map((s) => [s, new Map()]));
+      return null;
+    });
+  },
+
+  _tx(store, mode, fn) {
+    return new Promise((resolve, reject) => {
+      const tx = this._db.transaction(store, mode);
+      const result = fn(tx.objectStore(store));
+      tx.oncomplete = () => resolve(result && result.result !== undefined ? result.result : result);
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+
+  async get(store, key) {
+    await this.open();
+    if (this._mem) return this._mem[store].get(key);
+    return this._tx(store, 'readonly', (s) => s.get(key));
+  },
+  async getAll(store) {
+    await this.open();
+    if (this._mem) return [...this._mem[store].values()];
+    return this._tx(store, 'readonly', (s) => s.getAll());
+  },
+  async getByIndex(store, index, value) {
+    await this.open();
+    if (this._mem) return [...this._mem[store].values()].filter((v) => v[index] === value);
+    return this._tx(store, 'readonly', (s) => s.index(index).getAll(value));
+  },
+  async put(store, value) {
+    await this.open();
+    if (this._mem) { this._mem[store].set(value[STORE_KEYS[store]], value); return; }
+    return this._tx(store, 'readwrite', (s) => s.put(value));
+  },
+  async delete(store, key) {
+    await this.open();
+    if (this._mem) { this._mem[store].delete(key); return; }
+    return this._tx(store, 'readwrite', (s) => s.delete(key));
+  },
+  async deleteByIndex(store, index, value) {
+    await this.open();
+    if (this._mem) {
+      for (const [k, v] of [...this._mem[store]]) {
+        if (v[index] === value) this._mem[store].delete(k);
+      }
+      return;
+    }
+    return this._tx(store, 'readwrite', (s) => {
+      const req = s.index(index).getAllKeys(value);
+      req.onsuccess = () => req.result.forEach((k) => s.delete(k));
+      return req;
+    });
+  },
+  async count(store) {
+    await this.open();
+    if (this._mem) return this._mem[store].size;
+    return this._tx(store, 'readonly', (s) => s.count());
+  },
+};
+
+/* 標準カテゴリ(初回のみ投入) */
+const DEFAULT_CATEGORIES = [
+  { id: 'cat_transport', name: '交通費',        icon: '🚃', order: 1, isDefault: true },
+  { id: 'cat_flight',    name: '航空券',        icon: '✈️', order: 2, isDefault: true },
+  { id: 'cat_hotel',     name: '宿泊費',        icon: '🏨', order: 3, isDefault: true },
+  { id: 'cat_food',      name: '食費',          icon: '🍜', order: 4, isDefault: true },
+  { id: 'cat_activity',  name: 'アクティビティ', icon: '🎡', order: 5, isDefault: true },
+  { id: 'cat_other',     name: 'その他',        icon: '📦', order: 6, isDefault: true },
+];
+
+async function seedCategoriesIfEmpty() {
+  const n = await db.count('categories');
+  if (n > 0) return;
+  for (const c of DEFAULT_CATEGORIES) await db.put('categories', c);
+}
+
+/* 通貨プリセット */
+const CURRENCY_PRESETS = [
+  { code: 'USD', name: '米ドル',             symbol: '$' },
+  { code: 'PHP', name: 'フィリピンペソ',     symbol: '₱' },
+  { code: 'SGD', name: 'シンガポールドル',   symbol: 'S$' },
+  { code: 'CNY', name: '人民元',             symbol: '元' },
+  { code: 'KRW', name: '韓国ウォン',         symbol: '₩' },
+  { code: 'TWD', name: '台湾ドル',           symbol: 'NT$' },
+  { code: 'THB', name: 'タイバーツ',         symbol: '฿' },
+  { code: 'VND', name: 'ベトナムドン',       symbol: '₫' },
+  { code: 'EUR', name: 'ユーロ',             symbol: '€' },
+  { code: 'AUD', name: '豪ドル',             symbol: 'A$' },
+];
+
+/* =========================================================
+ * 共通ヘルパー
+ * =======================================================*/
+const uid = (prefix) => prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function fmtDate(iso) {          // '2026-01-12' → '1/12(月)'
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  return `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay()]})`;
+}
+function fmtDateFull(iso) {      // '2026-01-12' → '2026/1/12(月)'
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay()]})`;
+}
+function fmtDT(dt) {             // '2026-01-12T11:25' → '1/12(月) 11:25'
+  if (!dt) return '';
+  const [date, time] = dt.split('T');
+  return fmtDate(date) + (time ? ' ' + time : '');
+}
+function tripStatus(trip) {
+  const t = todayISO();
+  if (trip.endDate < t) return 'past';
+  if (trip.startDate > t) return 'upcoming';
+  return 'ongoing';
+}
+function nights(trip) {
+  return Math.max(0, Math.round((new Date(trip.endDate) - new Date(trip.startDate)) / 864e5));
+}
+function daysUntil(iso) {
+  return Math.round((new Date(iso + 'T00:00:00') - new Date(todayISO() + 'T00:00:00')) / 864e5);
+}
+/* 日本円換算レートを取得。purpose: 'budget'=予算用 / 'actual'=実績用
+   実績レートが未設定の通貨は予算レートにフォールバックする */
+function rateFor(trip, code, purpose) {
+  const c = (trip.currencies || []).find((x) => x.code === code);
+  if (!c) return 1;
+  const budget = c.budgetRate ?? c.rateToJPY ?? 1;
+  return purpose === 'actual' ? (c.actualRate ?? budget) : budget;
+}
+/* 金額表示(日本円は整数、外貨は小数2桁まで)。-0は0にする */
+function fmtMoney(n, code = 'JPY') {
+  let v = code === 'JPY' ? Math.round(n) : Math.round(n * 100) / 100;
+  if (v === 0) v = 0; /* -0 対策 */
+  return v.toLocaleString('ja-JP');
+}
+function symbolOf(trip, code) {
+  const c = (trip.currencies || []).find((x) => x.code === code);
+  return c ? (c.symbol || c.name) : (code === 'JPY' ? '¥' : code);
+}
+
+/* =========================================================
+ * ルーター(ハッシュベース、パラメータ対応)
+ * =======================================================*/
+const routes = [
+  { pattern: '/',              title: '旅財布',      render: renderHome },
+  { pattern: '/settings',      title: '設定',        render: renderSettings },
+  { pattern: '/categories',    title: 'カテゴリ管理', render: renderCategories },
+  { pattern: '/backup',        title: 'バックアップ', render: renderBackup },
+  { pattern: '/sync',          title: 'スプレッドシート同期', render: renderSyncSettings },
+  { pattern: '/trip-form',     title: '旅行を登録',  render: renderTripForm },
+  { pattern: '/trip-form/:id', title: '旅行を編集',  render: renderTripForm },
+  { pattern: '/trip/:id',      title: '',            render: renderTripDetail },
+  { pattern: '/trip/:id/budget',              title: '予算',      render: renderBudgetList },
+  { pattern: '/trip/:id/budget-form',         title: '予算を追加', render: renderBudgetForm },
+  { pattern: '/trip/:id/budget-form/:itemId', title: '予算を編集', render: renderBudgetForm },
+  { pattern: '/trip/:id/expenses',             title: '費用',      render: renderExpenseList },
+  { pattern: '/trip/:id/expense-form',         title: '費用を記録', render: renderExpenseForm },
+  { pattern: '/trip/:id/expense-form/:itemId', title: '費用を編集', render: renderExpenseForm },
+  { pattern: '/trip/:id/compare',              title: '比較',      render: renderCompare },
+  { pattern: '/trip/:id/cash',                 title: '現金管理',  render: renderCashList },
+  { pattern: '/trip/:id/cash-form',            title: '両替・入金を追加', render: renderCashForm },
+  { pattern: '/trip/:id/cash-form/:entryId',   title: '両替・入金を編集', render: renderCashForm },
+];
+
+function currentPath() {
+  const h = location.hash.replace(/^#/, '');
+  return h === '' ? '/' : h;
+}
+function navigate(path) { location.hash = path; }
+
+function matchRoute(path) {
+  const sp = path.split('/').filter(Boolean);
+  for (const r of routes) {
+    const pp = r.pattern.split('/').filter(Boolean);
+    if (pp.length !== sp.length) continue;
+    const params = {};
+    let ok = true;
+    pp.forEach((seg, i) => {
+      if (seg.startsWith(':')) params[seg.slice(1)] = decodeURIComponent(sp[i]);
+      else if (seg !== sp[i]) ok = false;
+    });
+    if (ok) return { route: r, params };
+  }
+  return { route: routes[0], params: {} };
+}
+
+function setHeaderTitle(text) {
+  document.getElementById('header-title').textContent = text;
+}
+
+let renderSeq = 0;
+async function renderRoute() {
+  const seq = ++renderSeq;
+  const { route, params } = matchRoute(currentPath());
+  if (!currentPath().endsWith('/expenses')) expenseReorder = false; /* 費用一覧を離れたら並び替えモード解除 */
+  setHeaderTitle(route.title || '旅財布');
+  const el = await route.render(params);
+  if (seq !== renderSeq) return; /* 描画中に別画面へ遷移していたら破棄(二重表示防止) */
+  el.classList.add('view');
+  const view = document.getElementById('view');
+  view.innerHTML = '';
+  view.appendChild(el);
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', renderRoute);
+
+/* =========================================================
+ * 画面: ホーム(旅行一覧)
+ * =======================================================*/
+async function renderHome() {
+  const el = document.createElement('div');
+  const trips = await db.getAll('trips');
+
+  if (trips.length === 0) {
+    el.innerHTML = `
+      <div class="card empty-state">
+        <div class="art">🧳</div>
+        <p class="lead">まだ旅行がありません</p>
+        <p class="sub">最初の旅行を登録して、予算づくりから始めましょう</p>
+        <button class="btn-primary" id="btn-add-trip">＋ 旅行を登録する</button>
+      </div>`;
+    el.querySelector('#btn-add-trip').addEventListener('click', () => navigate('/trip-form'));
+    return el;
+  }
+
+  const ongoing  = trips.filter((t) => tripStatus(t) === 'ongoing');
+  const upcoming = trips.filter((t) => tripStatus(t) === 'upcoming').sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const past     = trips.filter((t) => tripStatus(t) === 'past').sort((a, b) => b.startDate.localeCompare(a.startDate));
+
+  const cardHtml = (trip) => {
+    const status = tripStatus(trip);
+    const n = nights(trip);
+    let badge = '';
+    if (status === 'ongoing') {
+      badge = `<span class="t-badge ongoing">🏖️ 旅行中</span>`;
+    } else if (status === 'upcoming') {
+      const d = daysUntil(trip.startDate);
+      badge = `<span class="t-badge countdown">${d === 0 ? '今日出発!' : `あと${d}日`}</span>`;
+    } else {
+      badge = `<span class="t-badge past">おわった旅</span>`;
+    }
+    return `
+      <button class="trip-card ${status}" data-id="${esc(trip.id)}">
+        <div class="t-top"><span class="t-title">${esc(trip.title)}</span>${badge}</div>
+        ${trip.destination ? `<div class="t-meta">📍 ${esc(trip.destination)}</div>` : ''}
+        <div class="t-meta">🗓 ${fmtDateFull(trip.startDate)} 〜 ${fmtDateFull(trip.endDate)}(${n}泊${n + 1}日)</div>
+      </button>`;
+  };
+
+  const section = (title, list) =>
+    list.length ? `<h2 class="section-title">${title}</h2>` + list.map(cardHtml).join('') : '';
+
+  el.innerHTML =
+    section('🏖️ 旅行中', ongoing) +
+    section('🛫 今後の旅行', upcoming) +
+    section('📚 過去の旅行', past) +
+    `<button class="fab" id="fab-add" aria-label="旅行を登録">＋</button>`;
+
+  el.querySelectorAll('.trip-card').forEach((c) =>
+    c.addEventListener('click', () => navigate('/trip/' + c.dataset.id)));
+  el.querySelector('#fab-add').addEventListener('click', () => navigate('/trip-form'));
+  return el;
+}
+
+/* =========================================================
+ * 画面: 旅行登録・編集フォーム
+ * =======================================================*/
+async function renderTripForm(params) {
+  const editing = !!params.id;
+  const trip = editing ? await db.get('trips', params.id) : null;
+  if (editing && !trip) {
+    toast('旅行が見つかりません');
+    navigate('/');
+    return document.createElement('div');
+  }
+
+  const el = document.createElement('div');
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ 戻る</button></div>
+    <form id="trip-form" novalidate>
+      <div class="form-card">
+        <label class="field"><span class="f-label">旅行名 *</span>
+          <input type="text" id="f-title" placeholder="例: 沖縄旅行" value="${esc(trip?.title)}"></label>
+        <label class="field"><span class="f-label">場所(国・地域)</span>
+          <input type="text" id="f-dest" placeholder="例: 沖縄 / フィリピン・セブ" value="${esc(trip?.destination)}"></label>
+        <div class="field-row">
+          <label class="field"><span class="f-label">開始日 *</span>
+            <input type="date" id="f-start" value="${esc(trip?.startDate)}"></label>
+          <label class="field"><span class="f-label">終了日 *</span>
+            <input type="date" id="f-end" value="${esc(trip?.endDate)}"></label>
+        </div>
+        <span class="f-label">人数</span>
+        <div class="field-row">
+          <label class="field"><span class="f-label">大人</span>
+            <input type="number" id="f-adults" min="0" max="20" value="${trip?.members?.adults ?? 2}"></label>
+          <label class="field"><span class="f-label">こども</span>
+            <input type="number" id="f-children" min="0" max="20" value="${trip?.members?.children ?? 0}"></label>
+          <label class="field"><span class="f-label">幼児</span>
+            <input type="number" id="f-infants" min="0" max="20" value="${trip?.members?.infants ?? 0}"></label>
+        </div>
+      </div>
+
+      <h2 class="section-title">🏨 宿泊地(複数登録できます)</h2>
+      <div class="form-card">
+        <div id="stays"></div>
+        <button type="button" class="btn-add-row" id="add-stay">＋ 宿泊地を追加</button>
+      </div>
+
+      <h2 class="section-title">✈️ フライト/鉄道</h2>
+      <div class="form-card">
+        <div id="flights"></div>
+        <button type="button" class="btn-add-row" id="add-flight">＋ フライト/鉄道を追加</button>
+      </div>
+
+      <h2 class="section-title">💱 通貨とレート</h2>
+      <div class="form-card">
+        <p class="hint">日本円は自動で使えます。海外旅行では現地通貨を追加してください。レートは「予算用」と「費用(旅行中)用」を分けて登録でき、あとから変更もできます。</p>
+        <div id="currencies"></div>
+        <button type="button" class="btn-add-row" id="add-currency">＋ 通貨を追加</button>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="btn-cancel">キャンセル</button>
+        <button type="submit" class="btn-primary">${editing ? '更新する' : '保存する'}</button>
+      </div>
+      ${editing ? `<button type="button" class="btn-danger-ghost" id="btn-delete">🗑 この旅行を削除する</button>` : ''}
+    </form>`;
+
+  const staysBox = el.querySelector('#stays');
+  const flightsBox = el.querySelector('#flights');
+  const currenciesBox = el.querySelector('#currencies');
+
+  /* --- 宿泊地の行 --- */
+  function addStayRow(data = {}) {
+    const row = document.createElement('div');
+    row.className = 'sub-item stay-row';
+    row.innerHTML = `
+      <button type="button" class="btn-remove" aria-label="削除">✕</button>
+      <label class="field"><span class="f-label">宿泊先名</span>
+        <input type="text" class="st-name" placeholder="例: ラグナガーデンホテル" value="${esc(data.name)}"></label>
+      <div class="field-row">
+        <label class="field"><span class="f-label">チェックイン</span>
+          <input type="date" class="st-in" value="${esc(data.checkIn)}"></label>
+        <label class="field"><span class="f-label">チェックアウト</span>
+          <input type="date" class="st-out" value="${esc(data.checkOut)}"></label>
+      </div>`;
+    row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
+    staysBox.appendChild(row);
+  }
+
+  /* --- フライトの行 --- */
+  function addFlightRow(data = {}) {
+    const row = document.createElement('div');
+    row.className = 'sub-item flight-row';
+    row.innerHTML = `
+      <button type="button" class="btn-remove" aria-label="削除">✕</button>
+      <div class="field-row">
+        <label class="field"><span class="f-label">便名・列車名</span>
+          <input type="text" class="fl-no" placeholder="例: JAL917 / のぞみ253" value="${esc(data.flightNo)}"></label>
+        <label class="field"><span class="f-label">会社</span>
+          <input type="text" class="fl-airline" placeholder="例: JAL / JR東海" value="${esc(data.airline)}"></label>
+      </div>
+      <label class="field"><span class="f-label">出発地</span>
+        <input type="text" class="fl-dep" placeholder="例: 羽田空港 / 東京駅" value="${esc(data.depAirport)}"></label>
+      <label class="field"><span class="f-label">出発日時</span>
+        <input type="datetime-local" class="fl-dep-dt" value="${esc(data.depDateTime)}"></label>
+      <label class="field"><span class="f-label">到着地</span>
+        <input type="text" class="fl-arr" placeholder="例: 那覇空港 / 新大阪駅" value="${esc(data.arrAirport)}"></label>
+      <label class="field"><span class="f-label">到着日時</span>
+        <input type="datetime-local" class="fl-arr-dt" value="${esc(data.arrDateTime)}"></label>`;
+    row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
+    flightsBox.appendChild(row);
+  }
+
+  /* --- 通貨の行 --- */
+  function addCurrencyRow(data = {}) {
+    const row = document.createElement('div');
+    row.className = 'sub-item cur-row';
+    const isPreset = !data.code || CURRENCY_PRESETS.some((p) => p.code === data.code);
+    const options = CURRENCY_PRESETS.map((p) =>
+      `<option value="${p.code}" ${p.code === data.code ? 'selected' : ''}>${p.name}(${p.symbol})</option>`
+    ).join('') + `<option value="__custom" ${!isPreset ? 'selected' : ''}>その他(手入力)</option>`;
+    const budgetRate = data.budgetRate ?? data.rateToJPY ?? '';
+    row.innerHTML = `
+      <button type="button" class="btn-remove" aria-label="削除">✕</button>
+      <label class="field"><span class="f-label">通貨</span>
+        <select class="cu-select">${options}</select></label>
+      <label class="field cu-custom" ${isPreset ? 'hidden' : ''}><span class="f-label">通貨名</span>
+        <input type="text" class="cu-cname" placeholder="例: マレーシアリンギット" value="${isPreset ? '' : esc(data.name)}"></label>
+      <div class="field-row">
+        <label class="field"><span class="f-label">予算レート(1単位=何円)*</span>
+          <input type="number" class="cu-brate" step="any" min="0" inputmode="decimal"
+                 placeholder="例: 2.85" value="${budgetRate}"></label>
+        <label class="field"><span class="f-label">参考日(予算を立てた日)</span>
+          <input type="date" class="cu-bdate" value="${esc(data.budgetRateDate)}"></label>
+      </div>
+      <div class="field-row">
+        <label class="field"><span class="f-label">費用レート(旅行中)</span>
+          <input type="number" class="cu-arate" step="any" min="0" inputmode="decimal"
+                 placeholder="空欄なら予算レート" value="${data.actualRate ?? ''}"></label>
+        <label class="field"><span class="f-label">参考日(両替した日など)</span>
+          <input type="date" class="cu-adate" value="${esc(data.actualRateDate)}"></label>
+      </div>`;
+    const sel = row.querySelector('.cu-select');
+    sel.addEventListener('change', () => {
+      row.querySelector('.cu-custom').hidden = sel.value !== '__custom';
+    });
+    row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
+    currenciesBox.appendChild(row);
+  }
+
+  /* 編集時は既存データで行を埋める */
+  (trip?.stays || []).forEach(addStayRow);
+  (trip?.flights || []).forEach(addFlightRow);
+  (trip?.currencies || []).filter((c) => c.code !== 'JPY').forEach(addCurrencyRow);
+
+  el.querySelector('#add-stay').addEventListener('click', () => addStayRow());
+  el.querySelector('#add-flight').addEventListener('click', () => addFlightRow());
+  el.querySelector('#add-currency').addEventListener('click', () => addCurrencyRow());
+
+  const goBack = () => navigate(editing ? '/trip/' + trip.id : '/');
+  el.querySelector('#btn-back').addEventListener('click', goBack);
+  el.querySelector('#btn-cancel').addEventListener('click', goBack);
+
+  /* --- 保存 --- */
+  el.querySelector('#trip-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = el.querySelector('#f-title').value.trim();
+    const startDate = el.querySelector('#f-start').value;
+    const endDate = el.querySelector('#f-end').value;
+
+    if (!title) { toast('旅行名を入力してください'); el.querySelector('#f-title').focus(); return; }
+    if (!startDate || !endDate) { toast('開始日と終了日を入力してください'); return; }
+    if (endDate < startDate) { toast('終了日は開始日以降にしてください'); return; }
+
+    const stays = [...staysBox.querySelectorAll('.stay-row')].map((r) => ({
+      name: r.querySelector('.st-name').value.trim(),
+      checkIn: r.querySelector('.st-in').value,
+      checkOut: r.querySelector('.st-out').value,
+    })).filter((s) => s.name);
+
+    const flights = [...flightsBox.querySelectorAll('.flight-row')].map((r) => ({
+      flightNo: r.querySelector('.fl-no').value.trim(),
+      airline: r.querySelector('.fl-airline').value.trim(),
+      depAirport: r.querySelector('.fl-dep').value.trim(),
+      depDateTime: r.querySelector('.fl-dep-dt').value,
+      arrAirport: r.querySelector('.fl-arr').value.trim(),
+      arrDateTime: r.querySelector('.fl-arr-dt').value,
+    })).filter((f) => f.flightNo || f.depAirport || f.arrAirport);
+
+    const currencies = [{
+      code: 'JPY', name: '日本円', symbol: '¥',
+      budgetRate: 1, budgetRateDate: null, actualRate: 1, actualRateDate: null,
+    }];
+    for (const r of currenciesBox.querySelectorAll('.cur-row')) {
+      const selVal = r.querySelector('.cu-select').value;
+      const bRate = parseFloat(r.querySelector('.cu-brate').value);
+      const aRateRaw = r.querySelector('.cu-arate').value.trim();
+      const aRate = aRateRaw === '' ? null : parseFloat(aRateRaw);
+      let code, name, symbol;
+      if (selVal === '__custom') {
+        name = r.querySelector('.cu-cname').value.trim();
+        if (!name) { toast('通貨名を入力してください'); return; }
+        code = name; symbol = '';
+      } else {
+        const p = CURRENCY_PRESETS.find((x) => x.code === selVal);
+        ({ code, name, symbol } = p);
+      }
+      if (!(bRate > 0)) { toast(`${name}の予算レートを入力してください`); return; }
+      if (aRate !== null && !(aRate > 0)) { toast(`${name}の実績レートが正しくありません`); return; }
+      if (currencies.some((c) => c.code === code)) { toast(`通貨「${name}」が重複しています`); return; }
+      currencies.push({
+        code, name, symbol,
+        budgetRate: bRate,
+        budgetRateDate: r.querySelector('.cu-bdate').value || null,
+        actualRate: aRate,
+        actualRateDate: aRate === null ? null : (r.querySelector('.cu-adate').value || null),
+      });
+    }
+
+    const now = new Date().toISOString();
+    const record = {
+      id: editing ? trip.id : uid('trip'),
+      title,
+      destination: el.querySelector('#f-dest').value.trim(),
+      startDate, endDate,
+      members: {
+        adults: parseInt(el.querySelector('#f-adults').value, 10) || 0,
+        children: parseInt(el.querySelector('#f-children').value, 10) || 0,
+        infants: parseInt(el.querySelector('#f-infants').value, 10) || 0,
+      },
+      stays, flights, currencies,
+      isImported: trip?.isImported || false,
+      createdAt: trip?.createdAt || now,
+      updatedAt: now,
+    };
+    await db.put('trips', record);
+    toast(editing ? '旅行を更新しました ✅' : '旅行を登録しました 🎉');
+    navigate('/trip/' + record.id);
+  });
+
+  /* --- 削除 --- */
+  el.querySelector('#btn-delete')?.addEventListener('click', async () => {
+    if (!confirm(`「${trip.title}」を削除しますか?\nこの旅行の予算・実績・現金の記録もすべて削除されます。`)) return;
+    await db.deleteByIndex('budgetItems', 'tripId', trip.id);
+    await db.deleteByIndex('expenses', 'tripId', trip.id);
+    await db.deleteByIndex('cashEntries', 'tripId', trip.id);
+    await db.delete('trips', trip.id);
+    toast('旅行を削除しました');
+    navigate('/');
+  });
+
+  return el;
+}
+
+/* =========================================================
+ * 画面: 旅行詳細
+ * =======================================================*/
+async function renderTripDetail(params) {
+  const trip = await db.get('trips', params.id);
+  const el = document.createElement('div');
+  if (!trip) {
+    toast('旅行が見つかりません');
+    navigate('/');
+    return el;
+  }
+  setHeaderTitle(trip.title);
+
+  const bItems = await db.getByIndex('budgetItems', 'tripId', trip.id);
+  const budgetTotalJPY = bItems.reduce((s, it) => s + it.amount * rateFor(trip, it.currency, 'budget'), 0);
+  const budgetNote = bItems.length ? `¥${fmtMoney(budgetTotalJPY)}` : '未設定';
+  const eItems = await db.getByIndex('expenses', 'tripId', trip.id);
+  const spentJPY = eItems.reduce((s, it) => s + (it.amountJPY ?? it.amount * rateFor(trip, it.currency, 'actual')), 0);
+  const expenseNote = eItems.length ? `¥${fmtMoney(spentJPY)}` : '未記録';
+  const compareNote = budgetTotalJPY > 0 ? `${Math.round(spentJPY / budgetTotalJPY * 100)}% 使用` : '—';
+
+  /* 現金管理タイルは外貨を登録した旅行(=海外旅行)のみ表示 */
+  const foreignCurs = (trip.currencies || []).filter((c) => c.code !== 'JPY');
+  let cashTileHtml = '';
+  if (foreignCurs.length) {
+    const cEntries = await db.getByIndex('cashEntries', 'tripId', trip.id);
+    const cashSpends = eItems.filter((e) => e.paymentMethod === 'cash' && e.currency !== 'JPY');
+    const hasCashData = cEntries.length || cashSpends.length;
+    const cashNote = hasCashData
+      ? foreignCurs.map((c) => {
+          const inSum = cEntries.filter((x) => x.currency === c.code).reduce((s, x) => s + x.amount, 0);
+          const outSum = cashSpends.filter((x) => x.currency === c.code).reduce((s, x) => s + x.amount, 0);
+          return `${c.symbol || c.code}${fmtMoney(inSum - outSum, c.code)}`;
+        }).join('・')
+      : '—';
+    cashTileHtml = `<button class="menu-tile" id="tile-cash"><span class="m-icon">💵</span><span class="m-label">現金管理</span><span class="m-note">${cashNote}</span></button>`;
+  }
+
+  const status = tripStatus(trip);
+  const n = nights(trip);
+  let badge = '';
+  if (status === 'ongoing') badge = `<span class="t-badge ongoing">🏖️ 旅行中</span>`;
+  else if (status === 'upcoming') {
+    const d = daysUntil(trip.startDate);
+    badge = `<span class="t-badge countdown">${d === 0 ? '今日出発!' : `出発まであと${d}日`}</span>`;
+  } else badge = `<span class="t-badge past">おわった旅</span>`;
+
+  const m = trip.members || {};
+  const memberText = [
+    m.adults ? `大人${m.adults}` : '',
+    m.children ? `こども${m.children}` : '',
+    m.infants ? `幼児${m.infants}` : '',
+  ].filter(Boolean).join('・') || '未設定';
+
+  const staysHtml = (trip.stays || []).map((s) => {
+    const range = (s.checkIn || s.checkOut)
+      ? `<div class="info-sub">${fmtDate(s.checkIn)} 〜 ${fmtDate(s.checkOut)}</div>` : '';
+    return `<div class="list-item">🏨 ${esc(s.name)}${range}</div>`;
+  }).join('');
+
+  const flightsHtml = (trip.flights || []).map((f) => `
+    <div class="list-item">✈️ ${esc(f.flightNo)}${f.airline ? `(${esc(f.airline)})` : ''}
+      <div class="info-sub">${esc(f.depAirport)} ${fmtDT(f.depDateTime)} → ${esc(f.arrAirport)} ${fmtDT(f.arrDateTime)}</div>
+    </div>`).join('');
+
+  const currencyRows = (trip.currencies || []).map((c) => {
+    if (c.code === 'JPY') return `<div class="list-item">¥ 日本円(基準)</div>`;
+    const sym = c.symbol ? `${esc(c.symbol)} ` : '';
+    const bRate = c.budgetRate ?? c.rateToJPY;
+    const bDate = c.budgetRateDate ? `(${fmtDateFull(c.budgetRateDate)}時点)` : '';
+    const aText = c.actualRate
+      ? `1単位 = ${c.actualRate}円${c.actualRateDate ? `(${fmtDateFull(c.actualRateDate)}時点)` : ''}`
+      : '未設定 → 予算レートで換算';
+    return `<div class="list-item">${sym}${esc(c.name)}
+      <div class="info-sub">予算レート: 1単位 = ${bRate}円${bDate}</div>
+      <div class="info-sub">費用レート: ${aText}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ 一覧に戻る</button></div>
+    <div class="detail-head">${badge}</div>
+
+    <h2 class="section-title">📌 この旅のメニュー</h2>
+    <div class="menu-grid">
+      <button class="menu-tile" id="tile-budget"><span class="m-icon">💰</span><span class="m-label">予算</span><span class="m-note">${budgetNote}</span></button>
+      <button class="menu-tile" id="tile-expense"><span class="m-icon">📝</span><span class="m-label">費用の記録</span><span class="m-note">${expenseNote}</span></button>
+      <button class="menu-tile" id="tile-compare"><span class="m-icon">📊</span><span class="m-label">予算と費用の比較</span><span class="m-note">${compareNote}</span></button>
+      ${cashTileHtml}
+    </div>
+
+    <h2 class="section-title">ℹ️ 旅行情報</h2>
+    <div class="card">
+      ${trip.destination ? `<div class="info-row"><span class="i-icon">📍</span><div class="i-body">${esc(trip.destination)}</div></div>` : ''}
+      <div class="info-row"><span class="i-icon">🗓</span><div class="i-body">${fmtDateFull(trip.startDate)} 〜 ${fmtDateFull(trip.endDate)}<span class="info-sub">(${n}泊${n + 1}日)</span></div></div>
+      <div class="info-row"><span class="i-icon">👨‍👩‍👧</span><div class="i-body">${memberText}</div></div>
+    </div>
+
+    ${staysHtml ? `<h2 class="section-title">🏨 宿泊地</h2><div class="card">${staysHtml}</div>` : ''}
+    ${flightsHtml ? `<h2 class="section-title">✈️ フライト/鉄道</h2><div class="card">${flightsHtml}</div>` : ''}
+
+    <h2 class="section-title">💱 通貨とレート</h2>
+    <div class="card">${currencyRows}</div>
+
+    <div class="form-actions">
+      <button class="btn-secondary" id="btn-edit" style="flex:1">✏️ 旅行情報を編集する</button>
+    </div>`;
+
+  el.querySelector('#btn-back').addEventListener('click', () => navigate('/'));
+  el.querySelector('#btn-edit').addEventListener('click', () => navigate('/trip-form/' + trip.id));
+  el.querySelector('#tile-budget').addEventListener('click', () => navigate(`/trip/${trip.id}/budget`));
+  el.querySelector('#tile-expense').addEventListener('click', () => navigate(`/trip/${trip.id}/expenses`));
+  el.querySelector('#tile-compare').addEventListener('click', () => navigate(`/trip/${trip.id}/compare`));
+  el.querySelector('#tile-cash')?.addEventListener('click', () => navigate(`/trip/${trip.id}/cash`));
+  return el;
+}
+
+/* =========================================================
+ * 画面: 予算一覧
+ * =======================================================*/
+async function renderBudgetList(params) {
+  const trip = await db.get('trips', params.id);
+  const el = document.createElement('div');
+  if (!trip) { toast('旅行が見つかりません'); navigate('/'); return el; }
+  setHeaderTitle('予算 — ' + trip.title);
+
+  const [items, cats] = await Promise.all([
+    db.getByIndex('budgetItems', 'tripId', trip.id),
+    db.getAll('categories'),
+  ]);
+  cats.sort((a, b) => a.order - b.order);
+
+  const toJPY = (it) => it.amount * rateFor(trip, it.currency, 'budget');
+  const totalJPY = items.reduce((sum, it) => sum + toJPY(it), 0);
+  const hasForeign = items.some((it) => it.currency !== 'JPY');
+
+  const sections = cats.map((cat) => {
+    const list = items.filter((it) => it.categoryId === cat.id)
+      .sort((a, b) => ((a.date || '9999') < (b.date || '9999') ? -1 : 1));
+    if (!list.length) return '';
+    const sub = list.reduce((s, it) => s + toJPY(it), 0);
+    const rows = list.map((it) => {
+      const sym = symbolOf(trip, it.currency);
+      const parts = [];
+      if (it.date) parts.push(fmtDate(it.date));
+      if (it.quantity > 1) parts.push(`${sym}${fmtMoney(it.unitPrice, it.currency)} × ${it.quantity}`);
+      if (it.memo) parts.push(esc(it.memo));
+      return `
+        <button class="row-btn" data-id="${esc(it.id)}">
+          <span class="row-main">
+            <span class="row-title">${esc(it.title) || esc(cat.name)}</span>
+            <span class="row-sub">${parts.join('・')}</span>
+          </span>
+          <span class="row-amount">${sym}${fmtMoney(it.amount, it.currency)}
+            ${it.currency === 'JPY' ? '' : `<span class="jpy">≈ ¥${fmtMoney(toJPY(it))}</span>`}
+          </span>
+        </button>`;
+    }).join('');
+    return `
+      <div class="cat-head"><span class="ch-name">${esc(cat.icon)} ${esc(cat.name)}</span><span class="ch-sum">¥${fmtMoney(sub)}</span></div>
+      <div class="card" style="padding:6px 16px">${rows}</div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ ${esc(trip.title)}に戻る</button></div>
+    <div class="total-card">
+      <div class="tc-label">この旅の予算合計</div>
+      <div class="tc-amount">¥${fmtMoney(totalJPY)}</div>
+      <div class="tc-sub">${items.length}件の予算${hasForeign ? '・外貨は予算レートで換算' : ''}</div>
+    </div>
+    ${items.length ? sections : `
+      <div class="card empty-state" style="margin-top:16px">
+        <div class="art">💰</div>
+        <p class="lead">まだ予算がありません</p>
+        <p class="sub">日付ごとでも、単価×数量でも、一括でも。ひとつのフォームで登録できます</p>
+        <button class="btn-primary" id="btn-first-add">＋ 予算を追加する</button>
+      </div>`}
+    <button class="fab" id="fab-add" aria-label="予算を追加">＋</button>`;
+
+  el.querySelector('#btn-back').addEventListener('click', () => navigate('/trip/' + trip.id));
+  const goAdd = () => navigate(`/trip/${trip.id}/budget-form`);
+  el.querySelector('#fab-add').addEventListener('click', goAdd);
+  el.querySelector('#btn-first-add')?.addEventListener('click', goAdd);
+  el.querySelectorAll('.row-btn').forEach((r) =>
+    r.addEventListener('click', () => navigate(`/trip/${trip.id}/budget-form/${r.dataset.id}`)));
+  return el;
+}
+
+/* =========================================================
+ * 画面: 予算の追加・編集
+ * =======================================================*/
+async function renderBudgetForm(params) {
+  const trip = await db.get('trips', params.id);
+  const el = document.createElement('div');
+  if (!trip) { toast('旅行が見つかりません'); navigate('/'); return el; }
+  const editing = !!params.itemId;
+  const item = editing ? await db.get('budgetItems', params.itemId) : null;
+  if (editing && !item) { toast('予算が見つかりません'); navigate(`/trip/${trip.id}/budget`); return el; }
+
+  const cats = (await db.getAll('categories')).sort((a, b) => a.order - b.order);
+  const curs = trip.currencies || [];
+
+  const catOptions = cats.map((c) =>
+    `<option value="${esc(c.id)}" ${item?.categoryId === c.id ? 'selected' : ''}>${esc(c.icon)} ${esc(c.name)}</option>`).join('');
+  const curOptions = curs.map((c) =>
+    `<option value="${esc(c.code)}" ${(item?.currency || 'JPY') === c.code ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ 予算一覧に戻る</button></div>
+    <form id="b-form" novalidate>
+      <div class="form-card">
+        <label class="field"><span class="f-label">カテゴリ *</span><select id="b-cat">${catOptions}</select></label>
+        <div id="suggest"></div>
+        <label class="field"><span class="f-label">予定日(決まっていなければ空欄でOK)</span>
+          <input type="date" id="b-date" value="${esc(item?.date)}"
+                 min="${esc(trip.startDate)}" max="${esc(trip.endDate)}"></label>
+        <label class="field"><span class="f-label">内容</span>
+          <input type="text" id="b-title" placeholder="例: 新宿-箱根湯本 / 昼食" value="${esc(item?.title)}"></label>
+        ${curs.length > 1
+          ? `<label class="field"><span class="f-label">通貨</span><select id="b-cur">${curOptions}</select></label>`
+          : `<input type="hidden" id="b-cur" value="JPY">`}
+        <div class="field-row">
+          <label class="field"><span class="f-label">単価 *</span>
+            <input type="number" id="b-price" step="any" min="0" inputmode="decimal"
+                   placeholder="例: 1110" value="${item?.unitPrice ?? ''}"></label>
+          <label class="field"><span class="f-label">数量(人数・泊数・日数)*</span>
+            <input type="number" id="b-qty" step="any" min="0" inputmode="decimal" value="${item?.quantity ?? 1}"></label>
+        </div>
+        <label class="field"><span class="f-label">メモ</span>
+          <input type="text" id="b-memo" placeholder="例: 小田急ロマンスカー" value="${esc(item?.memo)}"></label>
+        <div class="calc-line" id="calc"></div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="btn-cancel">キャンセル</button>
+        <button type="submit" class="btn-primary">${editing ? '更新する' : '保存する'}</button>
+      </div>
+      ${editing ? `<button type="button" class="btn-danger-ghost" id="btn-delete">🗑 この予算を削除する</button>` : ''}
+    </form>`;
+
+  const q = (s) => el.querySelector(s);
+  const mem = trip.members || {};
+  const personCount = Math.max(1, (mem.adults || 0) + (mem.children || 0));
+
+  function currentAmount() {
+    const price = parseFloat(q('#b-price').value) || 0;
+    const qty = parseFloat(q('#b-qty').value) || 0;
+    return price * qty;
+  }
+  function updateCalc() {
+    const code = q('#b-cur').value || 'JPY';
+    const amt = currentAmount();
+    const sym = symbolOf(trip, code);
+    let text = `合計: ${sym}${fmtMoney(amt, code)}`;
+    if (code !== 'JPY') text += `(≈ ¥${fmtMoney(amt * rateFor(trip, code, 'budget'))})`;
+    q('#calc').textContent = text;
+  }
+
+  /* STEP2で登録した宿泊地・フライト/鉄道をカテゴリに応じて候補表示 */
+  function suggestionsFor(catId) {
+    if (catId === 'cat_hotel') {
+      return (trip.stays || []).map((s) => {
+        const n = (s.checkIn && s.checkOut)
+          ? Math.max(1, Math.round((new Date(s.checkOut) - new Date(s.checkIn)) / 864e5))
+          : null;
+        return {
+          label: `🏨 ${s.name}${n ? `(${fmtDate(s.checkIn)}〜${fmtDate(s.checkOut)}・${n}泊)` : ''}`,
+          fill: { title: s.name, date: s.checkIn || '', quantity: n || 1, memo: n ? `${n}泊` : '' },
+        };
+      });
+    }
+    if (catId === 'cat_flight' || catId === 'cat_transport') {
+      return (trip.flights || []).map((f) => {
+        const route = [f.depAirport, f.arrAirport].filter(Boolean).join('-');
+        const name = [f.flightNo, f.airline].filter(Boolean).join('/');
+        if (!route && !name) return null;
+        return {
+          label: `✈️ ${route || name}${route && name ? `(${name})` : ''}`,
+          fill: {
+            title: route || name,
+            date: f.depDateTime ? f.depDateTime.split('T')[0] : '',
+            quantity: personCount,
+            memo: name,
+          },
+        };
+      }).filter(Boolean);
+    }
+    return [];
+  }
+
+  function updateSuggest() {
+    const box = q('#suggest');
+    const sug = suggestionsFor(q('#b-cat').value);
+    if (!sug.length) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="suggest-label">旅行情報から選ぶ(タップで自動入力)</div>
+      <div class="suggest-wrap">${sug.map((s, i) =>
+        `<button type="button" class="suggest-chip" data-i="${i}">${esc(s.label)}</button>`).join('')}</div>`;
+    box.querySelectorAll('.suggest-chip').forEach((chip) =>
+      chip.addEventListener('click', () => {
+        const f = sug[chip.dataset.i].fill;
+        q('#b-title').value = f.title || '';
+        if (f.date) q('#b-date').value = f.date;
+        if (f.quantity) q('#b-qty').value = f.quantity;
+        if (f.memo) q('#b-memo').value = f.memo;
+        updateCalc();
+        q('#b-price').focus();
+      }));
+  }
+
+  q('#b-cat').addEventListener('change', updateSuggest);
+  ['#b-price', '#b-qty', '#b-cur'].forEach((sel) => {
+    const n = q(sel);
+    n.addEventListener('input', updateCalc);
+    n.addEventListener('change', updateCalc);
+  });
+  updateSuggest();
+  updateCalc();
+
+  const goBack = () => navigate(`/trip/${trip.id}/budget`);
+  q('#btn-back').addEventListener('click', goBack);
+  q('#btn-cancel').addEventListener('click', goBack);
+
+  q('#b-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const price = parseFloat(q('#b-price').value);
+    const qty = parseFloat(q('#b-qty').value);
+    if (!(price > 0)) { toast('単価を入力してください'); return; }
+    if (!(qty > 0)) { toast('数量を入力してください'); return; }
+
+    const record = {
+      id: editing ? item.id : uid('bud'),
+      tripId: trip.id,
+      categoryId: q('#b-cat').value,
+      date: q('#b-date').value || null,
+      title: q('#b-title').value.trim(),
+      unitPrice: price,
+      quantity: qty,
+      amount: Math.round(price * qty * 100) / 100,
+      currency: q('#b-cur').value || 'JPY',
+      memo: q('#b-memo').value.trim(),
+    };
+    await db.put('budgetItems', record);
+    toast(editing ? '予算を更新しました ✅' : '予算を追加しました 💰');
+    goBack();
+  });
+
+  q('#btn-delete')?.addEventListener('click', async () => {
+    if (!confirm('この予算を削除しますか?')) return;
+    await db.delete('budgetItems', item.id);
+    toast('予算を削除しました');
+    goBack();
+  });
+
+  return el;
+}
+
+/* =========================================================
+ * 画面: 費用一覧(家計簿)
+ * =======================================================*/
+let expenseReorder = false; /* 長押しで入る並び替えモード */
+
+async function renderExpenseList(params) {
+  const trip = await db.get('trips', params.id);
+  const el = document.createElement('div');
+  if (!trip) { toast('旅行が見つかりません'); navigate('/'); return el; }
+  setHeaderTitle('費用 — ' + trip.title);
+
+  const [items, cats] = await Promise.all([
+    db.getByIndex('expenses', 'tripId', trip.id),
+    db.getAll('categories'),
+  ]);
+  const catMap = Object.fromEntries(cats.map((c) => [c.id, c]));
+  const jpyOf = (it) => it.amountJPY ?? it.amount * rateFor(trip, it.currency, 'actual');
+  const totalJPY = items.reduce((s, it) => s + jpyOf(it), 0);
+  const hasForeign = items.some((it) => it.currency !== 'JPY');
+
+  /* 同じ日付の中では手動の並び順(sortOrder)→記録順 */
+  const sortGroup = (list) => list.sort((a, b) => {
+    const ao = a.sortOrder, bo = b.sortOrder;
+    if (ao != null && bo != null && ao !== bo) return ao - bo;
+    if (ao != null && bo == null) return -1;
+    if (ao == null && bo != null) return 1;
+    return (a.createdAt || '').localeCompare(b.createdAt || '');
+  });
+
+  const dates = [...new Set(items.map((i) => i.date))].sort().reverse();
+  const sections = dates.map((d) => {
+    const list = sortGroup(items.filter((it) => it.date === d));
+    const sub = list.reduce((s, it) => s + jpyOf(it), 0);
+    const rows = list.map((it, idx) => {
+      const cat = catMap[it.categoryId];
+      const sym = symbolOf(trip, it.currency);
+      const subParts = [cat ? cat.name : '', it.memo ? esc(it.memo) : ''].filter(Boolean).join('・');
+      const inner = `
+          <span class="row-icon">${cat ? esc(cat.icon) : '🏷️'}</span>
+          <span class="row-main">
+            <span class="row-title">${esc(it.title) || (cat ? esc(cat.name) : '')}</span>
+            <span class="row-sub">${subParts}</span>
+          </span>
+          <span class="row-amount ${it.amount < 0 ? 'amount-minus' : ''}">${sym}${fmtMoney(it.amount, it.currency)}
+            ${it.currency === 'JPY' ? '' : `<span class="jpy">≈ ¥${fmtMoney(jpyOf(it))}</span>`}
+          </span>`;
+      if (expenseReorder) {
+        return `
+        <div class="row-btn">
+          ${inner}
+          <span style="display:flex;gap:6px;flex-shrink:0">
+            <button class="mini-btn r-up" data-id="${esc(it.id)}" ${idx === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
+            <button class="mini-btn r-down" data-id="${esc(it.id)}" ${idx === list.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
+          </span>
+        </div>`;
+      }
+      return `<button class="row-btn" data-id="${esc(it.id)}">${inner}</button>`;
+    }).join('');
+    return `
+      <div class="date-head"><span class="dh-date">${fmtDateFull(d)}</span><span class="dh-sum">¥${fmtMoney(sub)}</span></div>
+      <div class="card" style="padding:6px 16px">${rows}</div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ ${esc(trip.title)}に戻る</button></div>
+    <div class="total-card spend">
+      <div class="tc-label">これまでに使った金額</div>
+      <div class="tc-amount">¥${fmtMoney(totalJPY)}</div>
+      <div class="tc-sub">${items.length}件の記録${hasForeign ? '・外貨は費用レートで換算' : ''}</div>
+    </div>
+    ${expenseReorder ? `
+      <div class="card" style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;padding:10px 16px">
+        <span style="font-size:13px;font-weight:700">↕️ 並び替えモード(同じ日の中で移動)</span>
+        <button class="btn-primary" id="btn-reorder-done" style="padding:8px 22px;font-size:13px">完了</button>
+      </div>`
+      : (items.length ? `<p class="hint" style="margin:10px 2px -8px">明細を長押しすると並び替えができます</p>` : '')}
+    ${items.length ? sections : `
+      <div class="card empty-state" style="margin-top:16px">
+        <div class="art">📝</div>
+        <p class="lead">まだ記録がありません</p>
+        <p class="sub">使ったらその場でサッと記録。カテゴリと金額だけでOKです</p>
+        <button class="btn-primary" id="btn-first-add">＋ 記録する</button>
+      </div>`}
+    ${expenseReorder ? '' : `<button class="fab" id="fab-add" aria-label="記録を追加">＋</button>`}`;
+
+  el.querySelector('#btn-back').addEventListener('click', () => { expenseReorder = false; navigate('/trip/' + trip.id); });
+  const goAdd = () => navigate(`/trip/${trip.id}/expense-form`);
+  el.querySelector('#fab-add')?.addEventListener('click', goAdd);
+  el.querySelector('#btn-first-add')?.addEventListener('click', goAdd);
+
+  if (expenseReorder) {
+    el.querySelector('#btn-reorder-done').addEventListener('click', () => {
+      expenseReorder = false;
+      renderRoute();
+    });
+    async function moveItem(id, dir) {
+      const it = items.find((x) => x.id === id);
+      const group = sortGroup(items.filter((x) => x.date === it.date));
+      const idx = group.indexOf(it);
+      const j = idx + dir;
+      if (j < 0 || j >= group.length) return;
+      group.forEach((x, i) => { x.sortOrder = i * 10; });
+      [group[idx].sortOrder, group[j].sortOrder] = [group[j].sortOrder, group[idx].sortOrder];
+      for (const x of group) await db.put('expenses', x);
+      await renderRoute();
+    }
+    el.querySelectorAll('.r-up').forEach((b) => b.addEventListener('click', () => moveItem(b.dataset.id, -1)));
+    el.querySelectorAll('.r-down').forEach((b) => b.addEventListener('click', () => moveItem(b.dataset.id, 1)));
+  } else {
+    /* タップ=編集、長押し(0.5秒)=並び替えモード */
+    el.querySelectorAll('.row-btn').forEach((r) => {
+      let timer = null, fired = false;
+      const start = () => {
+        fired = false;
+        timer = setTimeout(() => {
+          fired = true;
+          expenseReorder = true;
+          renderRoute();
+        }, 500);
+      };
+      const cancel = () => clearTimeout(timer);
+      r.addEventListener('pointerdown', start);
+      r.addEventListener('pointerup', cancel);
+      r.addEventListener('pointerleave', cancel);
+      r.addEventListener('pointercancel', cancel);
+      r.addEventListener('click', () => {
+        if (fired) return;
+        navigate(`/trip/${trip.id}/expense-form/${r.dataset.id}`);
+      });
+    });
+  }
+  return el;
+}
+
+/* =========================================================
+ * 画面: 実績のクイック入力・編集
+ * =======================================================*/
+async function renderExpenseForm(params) {
+  const trip = await db.get('trips', params.id);
+  const el = document.createElement('div');
+  if (!trip) { toast('旅行が見つかりません'); navigate('/'); return el; }
+  const editing = !!params.itemId;
+  const item = editing ? await db.get('expenses', params.itemId) : null;
+  if (editing && !item) { toast('記録が見つかりません'); navigate(`/trip/${trip.id}/expenses`); return el; }
+
+  const cats = (await db.getAll('categories')).sort((a, b) => a.order - b.order);
+  const curs = trip.currencies || [];
+  const lastCur = (await db.get('settings', 'lastcur_' + trip.id))?.value;
+
+  let selCat = item?.categoryId || null;
+  let selCur = item?.currency || (curs.some((c) => c.code === lastCur) ? lastCur : 'JPY');
+  let selPay = item?.paymentMethod || null;
+
+  const t = todayISO();
+  const defaultDate = item?.date || (t >= trip.startDate && t <= trip.endDate ? t : trip.startDate);
+
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ 費用一覧に戻る</button></div>
+    <form id="e-form" novalidate>
+      <div class="form-card">
+        <span class="f-label">カテゴリ *</span>
+        <div class="catsel-grid" id="catsel">
+          ${cats.map((c) => `
+            <button type="button" class="catsel-btn" data-id="${esc(c.id)}">
+              <span class="ci">${esc(c.icon)}</span><span class="cn">${esc(c.name)}</span>
+            </button>`).join('')}
+        </div>
+        ${curs.length > 1 ? `
+        <span class="f-label">通貨</span>
+        <div class="curline" id="cursel">
+          ${curs.map((c) => `
+            <button type="button" class="cur-chip" data-code="${esc(c.code)}">${esc(c.symbol || c.name)} ${esc(c.name)}</button>`).join('')}
+        </div>` : ''}
+        <div class="field-row">
+          <label class="field"><span class="f-label">金額 *</span>
+            <input type="number" id="e-price" step="any" inputmode="decimal"
+                   placeholder="例: 1580" value="${item?.unitPrice ?? ''}"></label>
+          <label class="field" style="flex:0 0 32%"><span class="f-label">数量</span>
+            <input type="number" id="e-qty" step="any" min="0" inputmode="decimal" value="${item?.quantity ?? 1}"></label>
+        </div>
+        <div class="calc-line" id="calc"></div>
+        <label class="field"><span class="f-label">日付 *</span>
+          <input type="date" id="e-date" value="${esc(defaultDate)}"></label>
+        <label class="field"><span class="f-label">内容(店名・区間など)</span>
+          <input type="text" id="e-title" placeholder="例: 山賊ホルモン / 箱根湯本-新宿" value="${esc(item?.title)}"></label>
+        <span class="f-label">支払い方法(任意)</span>
+        <div class="curline" id="paysel">
+          <button type="button" class="cur-chip" data-pay="cash">💵 現金</button>
+          <button type="button" class="cur-chip" data-pay="card">💳 カード</button>
+        </div>
+        <label class="field"><span class="f-label">メモ</span>
+          <input type="text" id="e-memo" placeholder="例: エポスカード / クーポン利用" value="${esc(item?.memo)}"></label>
+        <p class="hint">割引・クーポン・ポイント利用は、金額をマイナスで入力すると合計から差し引かれます。</p>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="btn-cancel">キャンセル</button>
+        <button type="submit" class="btn-primary">${editing ? '更新する' : '記録する'}</button>
+      </div>
+      ${editing ? `<button type="button" class="btn-danger-ghost" id="btn-delete">🗑 この記録を削除する</button>` : ''}
+    </form>`;
+
+  const q = (s) => el.querySelector(s);
+
+  function refreshSelections() {
+    el.querySelectorAll('.catsel-btn').forEach((b) => b.classList.toggle('selected', b.dataset.id === selCat));
+    el.querySelectorAll('#cursel .cur-chip').forEach((b) => b.classList.toggle('selected', b.dataset.code === selCur));
+    el.querySelectorAll('#paysel .cur-chip').forEach((b) => b.classList.toggle('selected', b.dataset.pay === selPay));
+  }
+  function updateCalc() {
+    const price = parseFloat(q('#e-price').value) || 0;
+    const qty = parseFloat(q('#e-qty').value) || 0;
+    const amt = price * qty;
+    const sym = symbolOf(trip, selCur);
+    let text = `合計: ${sym}${fmtMoney(amt, selCur)}`;
+    if (selCur !== 'JPY') text += `(≈ ¥${fmtMoney(amt * rateFor(trip, selCur, 'actual'))})`;
+    q('#calc').textContent = text;
+  }
+
+  el.querySelectorAll('.catsel-btn').forEach((b) =>
+    b.addEventListener('click', () => { selCat = b.dataset.id; refreshSelections(); }));
+  el.querySelectorAll('#cursel .cur-chip').forEach((b) =>
+    b.addEventListener('click', () => { selCur = b.dataset.code; refreshSelections(); updateCalc(); }));
+  el.querySelectorAll('#paysel .cur-chip').forEach((b) =>
+    b.addEventListener('click', () => {
+      selPay = selPay === b.dataset.pay ? null : b.dataset.pay; /* もう一度タップで解除 */
+      refreshSelections();
+    }));
+  ['#e-price', '#e-qty'].forEach((sel) => q(sel).addEventListener('input', updateCalc));
+  refreshSelections();
+  updateCalc();
+
+  const goBack = () => navigate(`/trip/${trip.id}/expenses`);
+  q('#btn-back').addEventListener('click', goBack);
+  q('#btn-cancel').addEventListener('click', goBack);
+
+  q('#e-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const price = parseFloat(q('#e-price').value);
+    const qty = parseFloat(q('#e-qty').value) || 1;
+    const date = q('#e-date').value;
+    if (!selCat) { toast('カテゴリを選んでください'); return; }
+    if (isNaN(price) || price === 0) { toast('金額を入力してください(割引はマイナスでOK)'); return; }
+    if (!(qty > 0)) { toast('数量を入力してください'); return; }
+    if (!date) { toast('日付を入力してください'); return; }
+
+    const amount = Math.round(price * qty * 100) / 100;
+    const record = {
+      id: editing ? item.id : uid('exp'),
+      tripId: trip.id,
+      date,
+      categoryId: selCat,
+      title: q('#e-title').value.trim(),
+      unitPrice: price,
+      quantity: qty,
+      amount,
+      currency: selCur,
+      amountJPY: Math.round(amount * rateFor(trip, selCur, 'actual') * 100) / 100,
+      paymentMethod: selPay,
+      memo: q('#e-memo').value.trim(),
+      syncStatus: 'pending', /* 編集も再同期対象(シート側は同じIDの行を上書き) */
+      createdAt: item?.createdAt || new Date().toISOString(),
+    };
+    await db.put('expenses', record);
+    await db.put('settings', { key: 'lastcur_' + trip.id, value: selCur });
+    toast(editing ? '記録を更新しました ✅' : '記録しました 📝');
+    syncNow(false); /* オンライン&設定済みなら自動送信 */
+    goBack();
+  });
+
+  q('#btn-delete')?.addEventListener('click', async () => {
+    if (!confirm('この記録を削除しますか?')) return;
+    await db.delete('expenses', item.id);
+    toast('記録を削除しました');
+    goBack();
+  });
+
+  return el;
+}
+
+/* =========================================================
+ * 画面: 予算と費用の比較ダッシュボード
+ * =======================================================*/
+async function renderCompare(params) {
+  const trip = await db.get('trips', params.id);
+  const el = document.createElement('div');
+  if (!trip) { toast('旅行が見つかりません'); navigate('/'); return el; }
+  setHeaderTitle('比較 — ' + trip.title);
+
+  const [bItems, eItems, cats] = await Promise.all([
+    db.getByIndex('budgetItems', 'tripId', trip.id),
+    db.getByIndex('expenses', 'tripId', trip.id),
+    db.getAll('categories'),
+  ]);
+  cats.sort((a, b) => a.order - b.order);
+
+  const bJPY = (it) => it.amount * rateFor(trip, it.currency, 'budget');
+  const eJPY = (it) => it.amountJPY ?? it.amount * rateFor(trip, it.currency, 'actual');
+  const budgetTotal = bItems.reduce((s, it) => s + bJPY(it), 0);
+  const spentTotal = eItems.reduce((s, it) => s + eJPY(it), 0);
+
+  if (!bItems.length && !eItems.length) {
+    el.innerHTML = `
+      <div class="back-row"><button class="btn-back" id="btn-back">‹ ${esc(trip.title)}に戻る</button></div>
+      <div class="card empty-state">
+        <div class="art">📊</div>
+        <p class="lead">比較するデータがまだありません</p>
+        <p class="sub">予算を立てて、費用を記録すると、ここで比較できます</p>
+        <button class="btn-primary" id="btn-go-budget">💰 予算を立てる</button>
+      </div>`;
+    el.querySelector('#btn-back').addEventListener('click', () => navigate('/trip/' + trip.id));
+    el.querySelector('#btn-go-budget').addEventListener('click', () => navigate(`/trip/${trip.id}/budget`));
+    return el;
+  }
+
+  const pctOf = (spent, budget) => (budget > 0 ? (spent / budget) * 100 : null);
+  const barClass = (p) => (p == null ? 'nobudget' : p > 100 ? 'over' : p > 80 ? 'warn' : '');
+  const barWidth = (p) => (p == null ? 100 : Math.max(0, Math.min(100, p)));
+
+  const totalPct = pctOf(spentTotal, budgetTotal);
+  const remain = budgetTotal - spentTotal;
+  let remainText, remainClass = '';
+  if (budgetTotal <= 0) {
+    remainText = '予算が未設定です(💰予算から登録できます)';
+  } else if (remain >= 0) {
+    remainText = `残り ¥${fmtMoney(remain)}`;
+  } else {
+    remainText = `⚠️ 予算を ¥${fmtMoney(-remain)} 超えています`;
+    remainClass = 'over';
+  }
+
+  const catCards = cats.map((cat) => {
+    const b = bItems.filter((it) => it.categoryId === cat.id).reduce((s, it) => s + bJPY(it), 0);
+    const s = eItems.filter((it) => it.categoryId === cat.id).reduce((sum, it) => sum + eJPY(it), 0);
+    if (!b && !s) return '';
+    const p = pctOf(s, b);
+    const over = p != null && p > 100;
+    let note;
+    if (!b) note = '予算未設定';
+    else if (s <= b) note = `残り ¥${fmtMoney(b - s)}`;
+    else note = `超過 ¥${fmtMoney(s - b)}`;
+    return `
+      <div class="card cmp-cat">
+        <div class="cc-head">
+          <span class="cc-name">${esc(cat.icon)} ${esc(cat.name)}</span>
+          <span class="cc-pct ${over ? 'over' : ''}">${p == null ? '—' : Math.round(p) + '%'}</span>
+        </div>
+        <div class="cmp-bar-wrap"><div class="cmp-bar ${barClass(p)}" data-w="${barWidth(p)}"></div></div>
+        <div class="cc-nums">費用 ¥${fmtMoney(s)} / 予算 ${b ? '¥' + fmtMoney(b) : '—'}・${note}</div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ ${esc(trip.title)}に戻る</button></div>
+    <div class="card">
+      <div class="ct-row">
+        <span class="ct-label">この旅ぜんぶの 費用 ÷ 予算</span>
+        <span class="ct-pct ${totalPct != null && totalPct > 100 ? 'over' : ''}">${totalPct == null ? '—' : Math.round(totalPct) + '%'}</span>
+      </div>
+      <div class="ct-amounts">¥${fmtMoney(spentTotal)}<span class="ct-slash"> / 予算 ¥${fmtMoney(budgetTotal)}</span></div>
+      <div class="cmp-bar-wrap big"><div class="cmp-bar ${barClass(totalPct)}" data-w="${barWidth(totalPct)}"></div></div>
+      <div class="ct-remain ${remainClass}">${remainText}</div>
+    </div>
+    <h2 class="section-title">🏷️ カテゴリ別</h2>
+    ${catCards || '<div class="card"><p style="font-size:13px;color:var(--c-text-sub)">カテゴリ別のデータがありません</p></div>'}`;
+
+  el.querySelector('#btn-back').addEventListener('click', () => navigate('/trip/' + trip.id));
+
+  /* バーを0→実際の幅へアニメーション */
+  setTimeout(() => {
+    el.querySelectorAll('.cmp-bar').forEach((b) => { b.style.width = b.dataset.w + '%'; });
+  }, 60);
+
+  return el;
+}
+
+/* =========================================================
+ * 画面: 現金管理(海外旅行向け)
+ * =======================================================*/
+const CASH_TYPES = {
+  exchange:   { icon: '💱', label: '両替' },
+  withdrawal: { icon: '🏧', label: 'キャッシング' },
+  adjust:     { icon: '🔧', label: '残高調整' },
+};
+
+async function renderCashList(params) {
+  const trip = await db.get('trips', params.id);
+  const el = document.createElement('div');
+  if (!trip) { toast('旅行が見つかりません'); navigate('/'); return el; }
+  setHeaderTitle('現金 — ' + trip.title);
+
+  const foreign = (trip.currencies || []).filter((c) => c.code !== 'JPY');
+  if (!foreign.length) {
+    el.innerHTML = `
+      <div class="back-row"><button class="btn-back" id="btn-back">‹ ${esc(trip.title)}に戻る</button></div>
+      <div class="card empty-state">
+        <div class="art">💵</div>
+        <p class="lead">この旅行には外貨がありません</p>
+        <p class="sub">現金管理は外貨を登録した旅行(海外旅行)で使えます。旅行情報の編集から通貨を追加してください</p>
+      </div>`;
+    el.querySelector('#btn-back').addEventListener('click', () => navigate('/trip/' + trip.id));
+    return el;
+  }
+
+  const [entries, expenses] = await Promise.all([
+    db.getByIndex('cashEntries', 'tripId', trip.id),
+    db.getByIndex('expenses', 'tripId', trip.id),
+  ]);
+  const cashSpends = expenses.filter((e) => e.paymentMethod === 'cash' && e.currency !== 'JPY');
+
+  const sections = foreign.map((cur) => {
+    const sym = cur.symbol || cur.code;
+    /* 入金(両替等)と現金支出をまとめ、通帳のように残高を計算する。
+       並び順: 日付(古い順)→ 同日内は 両替・キャッシング → 支出(記録順) → 残高調整 */
+    const rank = { in: 0, out: 1, adjust: 2 };
+    const timeline = [
+      ...entries.filter((e) => e.currency === cur.code)
+        .map((e) => ({ kind: e.type === 'adjust' ? 'adjust' : 'in', e })),
+      ...cashSpends.filter((x) => x.currency === cur.code)
+        .map((x) => ({ kind: 'out', e: x })),
+    ].sort((a, b) =>
+      (a.e.date || '').localeCompare(b.e.date || '') ||
+      (rank[a.kind] - rank[b.kind]) ||
+      (a.e.createdAt || '').localeCompare(b.e.createdAt || ''));
+
+    let bal = 0;
+    const rowHtml = (t) => {
+      const delta = t.kind === 'out' ? -t.e.amount : t.e.amount;
+      bal += delta;
+      const plus = delta >= 0;
+      let title, sub, clickAttr;
+      if (t.kind !== 'out') {
+        const ct = CASH_TYPES[t.e.type] || CASH_TYPES.exchange;
+        title = `${ct.icon} ${ct.label}${t.e.memo ? `(${esc(t.e.memo)})` : ''}`;
+        const rate = (t.e.sourceJPY && t.e.amount > 0)
+          ? `・実質 ${Math.round(t.e.sourceJPY / t.e.amount * 1000) / 1000}円/${esc(sym)}` : '';
+        sub = `${t.e.sourceJPY ? `元手 ¥${fmtMoney(t.e.sourceJPY)}` : ''}${rate}`;
+        clickAttr = `data-cash="${esc(t.e.id)}"`;
+      } else {
+        title = esc(t.e.title) || '現金払い';
+        sub = '費用の記録から';
+        clickAttr = `data-exp="${esc(t.e.id)}"`;
+      }
+      return `
+        <button class="row-btn" ${clickAttr}>
+          <span class="row-main">
+            <span class="row-title">${title}</span>
+            ${sub ? `<span class="row-sub">${sub}</span>` : ''}
+          </span>
+          <span class="row-amount ${plus ? 'amount-plus' : 'amount-minus'}">${plus ? '+' : '−'}${esc(sym)}${fmtMoney(Math.abs(delta), cur.code)}
+            <span class="jpy">残高 ${esc(sym)}${fmtMoney(bal, cur.code)}</span>
+          </span>
+        </button>`;
+    };
+
+    /* 日付ごとにカードでまとめる(見出し右はその日の終わり時点の残高) */
+    const dates = [...new Set(timeline.map((t) => t.e.date))];
+    const dayCards = dates.map((d) => {
+      const rows = timeline.filter((t) => t.e.date === d).map(rowHtml).join('');
+      return `
+        <div class="date-head"><span class="dh-date">${fmtDateFull(d)}</span><span class="dh-sum">残高 ${esc(sym)}${fmtMoney(bal, cur.code)}</span></div>
+        <div class="card" style="padding:6px 16px">${rows}</div>`;
+    }).join('');
+
+    const balJPY = bal * rateFor(trip, cur.code, 'actual');
+    return `
+      <div class="card" style="margin-top:16px">
+        <div class="ct-row"><span class="ct-label">${esc(sym)} ${esc(cur.name)}の財布</span></div>
+        <div class="ct-amounts ${bal < 0 ? 'amount-minus' : ''}">${esc(sym)}${fmtMoney(bal, cur.code)}<span class="ct-slash"> ≈ ¥${fmtMoney(balJPY)}</span></div>
+        ${bal < 0 ? '<div class="ct-remain over">⚠️ 残高がマイナスです。両替・キャッシングの記録漏れがないか確認してください</div>' : ''}
+      </div>
+      ${dayCards || '<p class="hint" style="margin-top:8px">まだ入出金がありません。「＋」から両替やキャッシングを記録しましょう</p>'}`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ ${esc(trip.title)}に戻る</button></div>
+    ${sections}
+    <p class="hint" style="margin-top:14px">💡 現金で支払ったときは「費用の記録」で支払い方法を「💵現金」にすると、自動でここの残高から引かれます(二重入力は不要です)。</p>
+    <button class="fab" id="fab-add" aria-label="両替・入金を追加">＋</button>`;
+
+  el.querySelector('#btn-back').addEventListener('click', () => navigate('/trip/' + trip.id));
+  el.querySelector('#fab-add').addEventListener('click', () => navigate(`/trip/${trip.id}/cash-form`));
+  el.querySelectorAll('[data-cash]').forEach((r) =>
+    r.addEventListener('click', () => navigate(`/trip/${trip.id}/cash-form/${r.dataset.cash}`)));
+  el.querySelectorAll('[data-exp]').forEach((r) =>
+    r.addEventListener('click', () => navigate(`/trip/${trip.id}/expense-form/${r.dataset.exp}`)));
+  return el;
+}
+
+/* =========================================================
+ * 画面: 両替・入金の追加・編集
+ * =======================================================*/
+async function renderCashForm(params) {
+  const trip = await db.get('trips', params.id);
+  const el = document.createElement('div');
+  if (!trip) { toast('旅行が見つかりません'); navigate('/'); return el; }
+  const editing = !!params.entryId;
+  const entry = editing ? await db.get('cashEntries', params.entryId) : null;
+  if (editing && !entry) { toast('記録が見つかりません'); navigate(`/trip/${trip.id}/cash`); return el; }
+
+  const foreign = (trip.currencies || []).filter((c) => c.code !== 'JPY');
+  if (!foreign.length) { toast('外貨が登録されていません'); navigate(`/trip/${trip.id}/cash`); return el; }
+
+  let selType = entry?.type || 'exchange';
+  let selCur = entry?.currency || foreign[0].code;
+  const t = todayISO();
+  const defaultDate = entry?.date || (t >= trip.startDate && t <= trip.endDate ? t : trip.startDate);
+
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ 現金管理に戻る</button></div>
+    <form id="c-form" novalidate>
+      <div class="form-card">
+        <span class="f-label">種類</span>
+        <div class="seg" id="c-seg">
+          <button type="button" data-t="exchange">💱 両替</button>
+          <button type="button" data-t="withdrawal">🏧 キャッシング</button>
+          <button type="button" data-t="adjust">🔧 残高調整</button>
+        </div>
+        ${foreign.length > 1 ? `
+        <span class="f-label">通貨</span>
+        <div class="curline" id="c-cursel">
+          ${foreign.map((c) => `
+            <button type="button" class="cur-chip" data-code="${esc(c.code)}">${esc(c.symbol || c.name)} ${esc(c.name)}</button>`).join('')}
+        </div>` : ''}
+        <label class="field"><span class="f-label">日付 *</span>
+          <input type="date" id="c-date" value="${esc(defaultDate)}"></label>
+        <div class="field-row">
+          <label class="field"><span class="f-label" id="l-amount">受け取った金額(現地通貨)*</span>
+            <input type="number" id="c-amount" step="any" inputmode="decimal"
+                   placeholder="例: 17535" value="${entry?.amount ?? ''}"></label>
+          <label class="field" id="w-source"><span class="f-label">元手の日本円</span>
+            <input type="number" id="c-source" step="any" min="0" inputmode="decimal"
+                   placeholder="例: 50000" value="${entry?.sourceJPY ?? ''}"></label>
+        </div>
+        <div class="calc-line" id="c-calc"></div>
+        <label class="field"><span class="f-label">メモ(場所など)</span>
+          <input type="text" id="c-memo" placeholder="例: マクタン空港 / エポスカード" value="${esc(entry?.memo)}"></label>
+        <p class="hint" id="c-hint"></p>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="btn-cancel">キャンセル</button>
+        <button type="submit" class="btn-primary">${editing ? '更新する' : '保存する'}</button>
+      </div>
+      ${editing ? `<button type="button" class="btn-danger-ghost" id="btn-delete">🗑 この記録を削除する</button>` : ''}
+    </form>`;
+
+  const q = (s) => el.querySelector(s);
+
+  function refresh() {
+    el.querySelectorAll('#c-seg button').forEach((b) => b.classList.toggle('active', b.dataset.t === selType));
+    el.querySelectorAll('#c-cursel .cur-chip').forEach((b) => b.classList.toggle('selected', b.dataset.code === selCur));
+    const adjust = selType === 'adjust';
+    q('#w-source').hidden = adjust;
+    q('#l-amount').textContent = adjust ? '調整額(±現地通貨)*' : '受け取った金額(現地通貨)*';
+    q('#c-hint').textContent = adjust
+      ? '実際の財布と残高がズレたときの補正用です。増やすときはプラス、減らすときはマイナスで入力します。'
+      : '元手の日本円を入れると、手数料込みの実質レートを自動計算します(空欄でもOK)。';
+    updateCalc();
+  }
+  function updateCalc() {
+    const amount = parseFloat(q('#c-amount').value);
+    const source = parseFloat(q('#c-source').value);
+    const cur = foreign.find((c) => c.code === selCur);
+    const sym = cur ? (cur.symbol || cur.code) : '';
+    q('#c-calc').textContent = (selType !== 'adjust' && amount > 0 && source > 0)
+      ? `実質レート: 1${sym} = ${Math.round(source / amount * 1000) / 1000}円`
+      : '';
+  }
+
+  el.querySelectorAll('#c-seg button').forEach((b) =>
+    b.addEventListener('click', () => { selType = b.dataset.t; refresh(); }));
+  el.querySelectorAll('#c-cursel .cur-chip').forEach((b) =>
+    b.addEventListener('click', () => { selCur = b.dataset.code; refresh(); }));
+  ['#c-amount', '#c-source'].forEach((sel) => q(sel).addEventListener('input', updateCalc));
+  refresh();
+
+  const goBack = () => navigate(`/trip/${trip.id}/cash`);
+  q('#btn-back').addEventListener('click', goBack);
+  q('#btn-cancel').addEventListener('click', goBack);
+
+  q('#c-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const amount = parseFloat(q('#c-amount').value);
+    const sourceRaw = q('#c-source').value.trim();
+    const source = sourceRaw === '' ? null : parseFloat(sourceRaw);
+    const date = q('#c-date').value;
+    if (!date) { toast('日付を入力してください'); return; }
+    if (selType === 'adjust') {
+      if (isNaN(amount) || amount === 0) { toast('調整額を入力してください(±で入力)'); return; }
+    } else {
+      if (!(amount > 0)) { toast('受け取った金額を入力してください'); return; }
+      if (source !== null && !(source > 0)) { toast('元手の日本円が正しくありません'); return; }
+    }
+    const record = {
+      id: editing ? entry.id : uid('cash'),
+      tripId: trip.id,
+      date,
+      type: selType,
+      currency: selCur,
+      amount,
+      sourceJPY: selType === 'adjust' ? null : source,
+      memo: q('#c-memo').value.trim(),
+      createdAt: entry?.createdAt || new Date().toISOString(),
+    };
+    await db.put('cashEntries', record);
+    toast(editing ? '記録を更新しました ✅' : '記録しました 💵');
+    goBack();
+  });
+
+  q('#btn-delete')?.addEventListener('click', async () => {
+    if (!confirm('この記録を削除しますか?')) return;
+    await db.delete('cashEntries', entry.id);
+    toast('記録を削除しました');
+    goBack();
+  });
+
+  return el;
+}
+
+/* =========================================================
+ * 画面: カテゴリ管理
+ * =======================================================*/
+async function renderCategories() {
+  const el = document.createElement('div');
+  const cats = (await db.getAll('categories')).sort((a, b) => a.order - b.order);
+  const [budgetItems, expenses] = await Promise.all([db.getAll('budgetItems'), db.getAll('expenses')]);
+  const usage = (id) =>
+    budgetItems.filter((b) => b.categoryId === id).length +
+    expenses.filter((x) => x.categoryId === id).length;
+
+  const rows = cats.map((c, i) => `
+    <div class="catm-row" data-id="${esc(c.id)}">
+      <span class="catm-icon">${esc(c.icon)}</span>
+      <span class="catm-name">${esc(c.name)}</span>
+      <button class="mini-btn up" ${i === 0 ? 'disabled' : ''} aria-label="上へ">↑</button>
+      <button class="mini-btn down" ${i === cats.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
+      <button class="mini-btn edit" aria-label="編集">✏️</button>
+      <button class="mini-btn del" aria-label="削除">🗑</button>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ 設定に戻る</button></div>
+    <h2 class="section-title">🏷️ カテゴリ一覧</h2>
+    <div class="card">${rows}</div>
+    <h2 class="section-title">＋ カテゴリを追加</h2>
+    <div class="card">
+      <div class="field-row">
+        <label class="field" style="flex:0 0 90px"><span class="f-label">絵文字</span>
+          <input type="text" id="new-icon" placeholder="🎿" maxlength="4"></label>
+        <label class="field"><span class="f-label">カテゴリ名</span>
+          <input type="text" id="new-name" placeholder="例: おみやげ"></label>
+      </div>
+      <button class="btn-add-row" id="btn-add-cat">＋ 追加する</button>
+    </div>
+    <p class="hint" style="margin-top:10px">並び順はそのまま予算・実績画面の表示順になります。使用中のカテゴリは削除できません。</p>`;
+
+  el.querySelector('#btn-back').addEventListener('click', () => navigate('/settings'));
+
+  async function move(id, dir) {
+    const idx = cats.findIndex((c) => c.id === id);
+    const other = cats[idx + dir];
+    if (!other) return;
+    const c = cats[idx];
+    [c.order, other.order] = [other.order, c.order];
+    await db.put('categories', c);
+    await db.put('categories', other);
+    await renderRoute();
+  }
+
+  async function del(id) {
+    const cat = cats.find((c) => c.id === id);
+    const n = usage(id);
+    if (n > 0) { toast(`「${cat.name}」は${n}件の記録で使用中のため削除できません`); return; }
+    if (!confirm(`カテゴリ「${cat.name}」を削除しますか?`)) return;
+    await db.delete('categories', id);
+    toast('カテゴリを削除しました');
+    await renderRoute();
+  }
+
+  function editRow(row, id) {
+    const cat = cats.find((c) => c.id === id);
+    row.innerHTML = `
+      <input type="text" class="e-icon" value="${esc(cat.icon)}" maxlength="4" style="width:58px;flex:0 0 auto">
+      <input type="text" class="e-name" value="${esc(cat.name)}" style="flex:1;min-width:0">
+      <button class="mini-btn ok" style="width:auto;padding:0 12px;color:var(--c-primary);font-weight:700">保存</button>
+      <button class="mini-btn ng" style="width:auto;padding:0 12px">戻す</button>`;
+    row.querySelector('.ok').addEventListener('click', async () => {
+      const name = row.querySelector('.e-name').value.trim();
+      if (!name) { toast('カテゴリ名を入力してください'); return; }
+      cat.name = name;
+      cat.icon = row.querySelector('.e-icon').value.trim() || '🏷️';
+      await db.put('categories', cat);
+      toast('カテゴリを更新しました ✅');
+      await renderRoute();
+    });
+    row.querySelector('.ng').addEventListener('click', () => renderRoute());
+  }
+
+  el.querySelectorAll('.catm-row').forEach((row) => {
+    const id = row.dataset.id;
+    row.querySelector('.up').addEventListener('click', () => move(id, -1));
+    row.querySelector('.down').addEventListener('click', () => move(id, 1));
+    row.querySelector('.del').addEventListener('click', () => del(id));
+    row.querySelector('.edit').addEventListener('click', () => editRow(row, id));
+  });
+
+  el.querySelector('#btn-add-cat').addEventListener('click', async () => {
+    const name = el.querySelector('#new-name').value.trim();
+    if (!name) { toast('カテゴリ名を入力してください'); return; }
+    if (cats.some((c) => c.name === name)) { toast('同じ名前のカテゴリがあります'); return; }
+    const icon = el.querySelector('#new-icon').value.trim() || '🏷️';
+    const maxOrder = cats.reduce((m, c) => Math.max(m, c.order), 0);
+    await db.put('categories', { id: uid('cat'), name, icon, order: maxOrder + 1, isDefault: false });
+    toast('カテゴリを追加しました 🎉');
+    await renderRoute();
+  });
+
+  return el;
+}
+
+/* =========================================================
+ * スプレッドシート同期(Google Apps Script・一方向追記)
+ * 費用記録のうち syncStatus が 'pending' のものを送信する。
+ * URL・合言葉は設定画面から入力し、端末内(settings)にのみ保存。
+ * =======================================================*/
+let syncing = false;
+
+async function getSyncConfig() {
+  const url = (await db.get('settings', 'gasWebAppUrl'))?.value || '';
+  const token = (await db.get('settings', 'gasToken'))?.value || '';
+  return { url, token };
+}
+
+async function countPending() {
+  return (await db.getByIndex('expenses', 'syncStatus', 'pending')).length;
+}
+
+async function syncNow(notify = false) {
+  if (syncing) return false;
+  const { url, token } = await getSyncConfig();
+  if (!url || !token) {
+    if (notify) toast('同期先が未設定です(設定 → スプレッドシート同期)');
+    return false;
+  }
+  if (!navigator.onLine) {
+    if (notify) toast('オフラインです。オンラインになったら自動で送信します 📮');
+    return false;
+  }
+  const pending = await db.getByIndex('expenses', 'syncStatus', 'pending');
+  if (!pending.length) {
+    if (notify) toast('未同期のデータはありません ✅');
+    return true;
+  }
+  syncing = true;
+  try {
+    const [trips, cats] = await Promise.all([db.getAll('trips'), db.getAll('categories')]);
+    const tripMap = Object.fromEntries(trips.map((t) => [t.id, t.title]));
+    const catMap = Object.fromEntries(cats.map((c) => [c.id, c.name]));
+    const records = pending.map((e) => ({
+      id: e.id,
+      trip: tripMap[e.tripId] || e.tripId,
+      date: e.date,
+      category: catMap[e.categoryId] || e.categoryId,
+      title: e.title || '',
+      amount: e.amount,
+      currency: e.currency,
+      amountJPY: e.amountJPY,
+      paymentMethod: e.paymentMethod === 'cash' ? '現金' : e.paymentMethod === 'card' ? 'カード' : '',
+      memo: e.memo || '',
+      createdAt: e.createdAt || '',
+    }));
+    /* Content-Typeを付けない=単純リクエストにしてGASのCORS制約を回避する */
+    const res = await fetch(url, { method: 'POST', body: JSON.stringify({ token, records }) });
+    const result = await res.json();
+    if (!result.ok) throw new Error(result.error || 'sync rejected');
+    const now = new Date().toISOString();
+    for (const e of pending) {
+      e.syncStatus = 'synced';
+      e.syncedAt = now;
+      await db.put('expenses', e);
+    }
+    await db.put('settings', { key: 'lastSyncAt', value: now });
+    if (notify) toast(`${pending.length}件を同期しました 📤`);
+    return true;
+  } catch (err) {
+    console.warn('同期に失敗:', err);
+    if (notify) toast('同期に失敗しました。URL・合言葉・GASの公開設定を確認してください');
+    return false;
+  } finally {
+    syncing = false;
+  }
+}
+window.addEventListener('online', () => { syncNow(false); });
+
+/* =========================================================
+ * 画面: スプレッドシート同期の設定
+ * =======================================================*/
+async function renderSyncSettings() {
+  const el = document.createElement('div');
+  const { url, token } = await getSyncConfig();
+  const pending = await countPending();
+  const last = (await db.get('settings', 'lastSyncAt'))?.value;
+  const lastText = last ? new Date(last).toLocaleString('ja-JP') : 'まだ同期していません';
+
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ 設定に戻る</button></div>
+
+    <h2 class="section-title">📤 同期の状態</h2>
+    <div class="card">
+      <div class="info-row"><span class="i-icon">🕒</span><div class="i-body">最終同期: ${esc(lastText)}</div></div>
+      <div class="info-row"><span class="i-icon">📮</span><div class="i-body">未同期の費用記録: <b>${pending}件</b></div></div>
+      <button class="btn-primary" id="btn-sync-now" style="width:100%;margin-top:10px">📤 今すぐ同期する</button>
+    </div>
+
+    <h2 class="section-title">⚙️ 接続設定</h2>
+    <div class="card">
+      <p class="hint">Google Apps Script(GAS)のWebアプリURLと合言葉を入力します。<b>この設定は端末の中にだけ保存され、コードには含まれません。</b>GAS側の準備手順は docs/SYNC_SETUP.md をご覧ください。</p>
+      <label class="field"><span class="f-label">GAS WebアプリURL</span>
+        <input type="text" id="s-url" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(url)}"></label>
+      <label class="field"><span class="f-label">合言葉(トークン)</span>
+        <input type="text" id="s-token" placeholder="GAS側に設定した SYNC_TOKEN と同じ文字列" value="${esc(token)}"></label>
+      <div class="form-actions" style="margin-top:4px">
+        <button class="btn-secondary" id="btn-test" style="flex:1">接続テスト</button>
+        <button class="btn-primary" id="btn-save" style="flex:1">保存する</button>
+      </div>
+    </div>
+
+    <h2 class="section-title">📝 同期のしくみ</h2>
+    <div class="card"><p class="hint" style="margin:0">
+      ・費用を記録すると、オンラインなら自動でスプレッドシートに追記されます<br>
+      ・オフラインのときは「未同期」として貯まり、オンライン復帰時に自動送信されます<br>
+      ・記録を編集・再同期すると、シートの同じIDの行が上書きされます(二重になりません)<br>
+      ・アプリ→シートの一方向です。シート側を書き換えてもアプリには影響しません
+    </p></div>`;
+
+  const q = (s) => el.querySelector(s);
+  q('#btn-back').addEventListener('click', () => navigate('/settings'));
+
+  async function saveConfig() {
+    await db.put('settings', { key: 'gasWebAppUrl', value: q('#s-url').value.trim() });
+    await db.put('settings', { key: 'gasToken', value: q('#s-token').value.trim() });
+  }
+
+  q('#btn-save').addEventListener('click', async () => {
+    await saveConfig();
+    toast('同期設定を保存しました ✅');
+  });
+
+  q('#btn-test').addEventListener('click', async () => {
+    await saveConfig();
+    const { url: u, token: t } = await getSyncConfig();
+    if (!u || !t) { toast('URLと合言葉を入力してください'); return; }
+    toast('接続を確認しています…');
+    try {
+      const res = await fetch(u, { method: 'POST', body: JSON.stringify({ token: t, records: [] }) });
+      const j = await res.json();
+      toast(j.ok ? '接続OK!同期できる状態です 🎉' : `接続できましたが拒否されました: ${j.error || '合言葉を確認してください'}`);
+    } catch (err) {
+      toast('接続に失敗しました。URLとGASの公開設定を確認してください');
+    }
+  });
+
+  q('#btn-sync-now').addEventListener('click', async () => {
+    await saveConfig();
+    const ok = await syncNow(true);
+    if (ok) await renderRoute(); /* 未同期件数を更新 */
+  });
+
+  return el;
+}
+
+/* =========================================================
+ * 画面: バックアップ(JSONエクスポート/インポート)
+ * =======================================================*/
+const BACKUP_STORES = ['trips', 'budgetItems', 'expenses', 'categories', 'cashEntries', 'syncQueue', 'settings'];
+
+async function renderBackup() {
+  const el = document.createElement('div');
+  const counts = {};
+  for (const s of BACKUP_STORES) counts[s] = await db.count(s);
+
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ 設定に戻る</button></div>
+    <h2 class="section-title">📦 いまのデータ</h2>
+    <div class="card" style="font-size:14px">
+      旅行 ${counts.trips}件・予算 ${counts.budgetItems}件・費用 ${counts.expenses}件<br>
+      現金 ${counts.cashEntries}件・カテゴリ ${counts.categories}件
+    </div>
+    <h2 class="section-title">💾 エクスポート(バックアップ作成)</h2>
+    <div class="card">
+      <p class="hint">全データを1つのJSONファイルとしてダウンロードします。機種変更や万一の故障に備えて、Google Drive等に保管しておくのがおすすめです。<br>
+      ⚠️ スプレッドシート同期の設定(URL・合言葉)も含まれます。ファイルの共有にはご注意ください。</p>
+      <button class="btn-primary" id="btn-export" style="width:100%">💾 JSONファイルをダウンロード</button>
+    </div>
+    <h2 class="section-title">📂 インポート(復元)</h2>
+    <div class="card">
+      <p class="hint">バックアップしたJSONファイルを取り込みます。同じIDのデータは上書き、無いものは追加されます(今あるデータが勝手に消えることはありません)。</p>
+      <button class="btn-add-row" id="btn-import">📂 JSONファイルを選んで取り込む</button>
+      <input type="file" id="import-file" accept=".json,application/json" hidden>
+    </div>`;
+
+  el.querySelector('#btn-back').addEventListener('click', () => navigate('/settings'));
+
+  /* --- エクスポート --- */
+  el.querySelector('#btn-export').addEventListener('click', async () => {
+    const data = {};
+    for (const s of BACKUP_STORES) data[s] = await db.getAll(s);
+    const payload = { app: 'tabi-budget', version: 1, exportedAt: new Date().toISOString(), data };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `tabisaifu_backup_${todayISO()}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('バックアップをダウンロードしました 💾');
+  });
+
+  /* --- インポート --- */
+  const fileInput = el.querySelector('#import-file');
+  el.querySelector('#btn-import').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    try {
+      const payload = JSON.parse(await file.text());
+      if (payload.app !== 'tabi-budget' || !payload.data || typeof payload.data !== 'object') {
+        toast('旅財布のバックアップファイルではないようです');
+        fileInput.value = '';
+        return;
+      }
+      const d = payload.data;
+      const n = (k) => (Array.isArray(d[k]) ? d[k].length : 0);
+      const when = payload.exportedAt ? fmtDateFull(payload.exportedAt.slice(0, 10)) : '不明';
+      const ok = confirm(
+        `バックアップ(${when}作成)を取り込みます。\n\n` +
+        `旅行 ${n('trips')}件 / 予算 ${n('budgetItems')}件 / 費用 ${n('expenses')}件\n` +
+        `現金 ${n('cashEntries')}件 / カテゴリ ${n('categories')}件\n\n` +
+        `同じIDのデータは上書きされます。よろしいですか?`);
+      if (!ok) { fileInput.value = ''; return; }
+
+      let total = 0;
+      for (const s of BACKUP_STORES) {
+        if (!Array.isArray(d[s])) continue;
+        const key = STORE_KEYS[s];
+        for (const rec of d[s]) {
+          if (!rec || rec[key] == null) continue; /* 主キーの無いレコードはスキップ */
+          await db.put(s, rec);
+          total++;
+        }
+      }
+      toast(`${total}件のデータを取り込みました 🎉`);
+      await renderRoute();
+    } catch (err) {
+      console.error('インポート失敗:', err);
+      toast('読み込みに失敗しました。ファイルの内容を確認してください');
+    }
+    fileInput.value = '';
+  });
+
+  return el;
+}
+
+/* =========================================================
+ * 画面: 設定
+ * =======================================================*/
+async function renderSettings() {
+  const el = document.createElement('div');
+  el.innerHTML = `
+    <div class="back-row"><button class="btn-back" id="btn-back">‹ ホームに戻る</button></div>
+    <h2 class="section-title">データ</h2>
+    <div class="settings-list">
+      <button class="settings-item" id="si-categories"><span class="s-icon">🏷️</span><span class="s-label">カテゴリ管理</span><span class="badge-soon">›</span></button>
+      <button class="settings-item" id="si-backup"><span class="s-icon">💾</span><span class="s-label">JSONエクスポート/インポート</span><span class="badge-soon">›</span></button>
+      <button class="settings-item" id="si-sync"><span class="s-icon">📤</span><span class="s-label">スプレッドシート同期</span><span class="badge-soon" id="sync-badge">›</span></button>
+    </div>
+    <div class="about">
+      <div>旅財布 v1.0.0</div>
+      <div class="storage" id="storage-info">ストレージ使用量を確認中…</div>
+      <div class="storage" id="sw-info"></div>
+    </div>`;
+
+  el.querySelector('#btn-back').addEventListener('click', () => navigate('/'));
+  el.querySelector('#si-categories').addEventListener('click', () => navigate('/categories'));
+  el.querySelector('#si-backup').addEventListener('click', () => navigate('/backup'));
+  el.querySelector('#si-sync').addEventListener('click', () => navigate('/sync'));
+  countPending().then((n) => {
+    const badge = el.querySelector('#sync-badge');
+    if (badge && n > 0) badge.textContent = `未同期 ${n}件`;
+  });
+
+  if (navigator.storage?.estimate) {
+    navigator.storage.estimate().then(({ usage, quota }) => {
+      const mb = (x) => (x / 1024 / 1024).toFixed(1);
+      const info = el.querySelector('#storage-info');
+      if (info) info.textContent = `ストレージ: ${mb(usage)} MB 使用 / 空き ${mb(quota)} MB`;
+    });
+  }
+  const swInfo = el.querySelector('#sw-info');
+  if ('serviceWorker' in navigator) {
+    const reg = await navigator.serviceWorker.getRegistration();
+    swInfo.textContent = reg ? 'オフライン対応: 有効 ✅' : 'オフライン対応: 準備中…';
+  } else {
+    swInfo.textContent = 'オフライン対応: この環境では利用できません';
+  }
+  return el;
+}
+
+/* =========================================================
+ * 共通UI
+ * =======================================================*/
+let toastTimer = null;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+document.getElementById('btn-settings').addEventListener('click', () => navigate('/settings'));
+
+/* =========================================================
+ * 起動
+ * =======================================================*/
+async function boot() {
+  await db.open();
+  await seedCategoriesIfEmpty();
+  if (db.isMemoryMode()) {
+    document.getElementById('mem-banner').hidden = false;
+  }
+  await renderRoute();
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch((err) => {
+      console.warn('Service Worker登録に失敗(file://では動きません):', err);
+    });
+  }
+
+  /* 起動から少し待って未同期分を自動送信 */
+  setTimeout(() => syncNow(false), 2500);
+}
+boot();
+</script>
+</body>
+</html>

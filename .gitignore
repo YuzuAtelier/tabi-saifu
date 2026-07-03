@@ -1,0 +1,14 @@
+# 個人データ(公開リポジトリに含めない)
+data/
+tools/
+CLAUDE.md
+PROMPT.md
+docs/REQUIREMENTS.md
+docs/DECISIONS.md
+docs/HANDOFF.md
+
+# 作業環境
+.claude/
+*.log
+Thumbs.db
+Desktop.ini
