@@ -645,6 +645,10 @@ function setHeaderTitle(text) {
 }
 
 let renderSeq = 0;
+/* 一覧に戻ったときスクロール位置を制御するための予約(次のrenderRouteで1回だけ使われる) */
+let scrollToItemId = null;   /* この行が見えるようにスクロール(登録・編集からの復帰用) */
+let preserveScrollY = null;  /* このY座標を維持(並び替えの↑↓用。トップに戻さない) */
+
 async function renderRoute() {
   const seq = ++renderSeq;
   const { route, params } = matchRoute(currentPath());
@@ -656,7 +660,21 @@ async function renderRoute() {
   const view = document.getElementById('view');
   view.innerHTML = '';
   view.appendChild(el);
-  window.scrollTo(0, 0);
+
+  if (preserveScrollY !== null) {
+    const y = preserveScrollY;
+    preserveScrollY = null;
+    window.scrollTo(0, y);
+  } else if (scrollToItemId) {
+    const id = scrollToItemId;
+    scrollToItemId = null;
+    const target = el.querySelector(`[data-id="${CSS.escape(id)}"]`) ||
+                   el.querySelector(`[data-cash="${CSS.escape(id)}"]`); /* 現金の入出金行はdata-cash属性 */
+    if (target) target.scrollIntoView({ block: 'center' });
+    else window.scrollTo(0, 0);
+  } else {
+    window.scrollTo(0, 0);
+  }
 }
 window.addEventListener('hashchange', renderRoute);
 
@@ -1350,6 +1368,7 @@ async function renderBudgetForm(params) {
     };
     await db.put('budgetItems', record);
     toast(editing ? '予算を更新しました ✅' : '予算を追加しました 💰');
+    scrollToItemId = record.id;
     goBack();
   });
 
@@ -1506,6 +1525,7 @@ async function renderExpenseList(params) {
       group.forEach((x, i) => { x.sortOrder = i * 10; });
       [group[idx].sortOrder, group[j].sortOrder] = [group[j].sortOrder, group[idx].sortOrder];
       for (const x of group) await db.put('expenses', x);
+      preserveScrollY = window.scrollY;
       await renderRoute();
     }
     el.querySelectorAll('.r-up').forEach((b) => b.addEventListener('click', () => moveItem(b.dataset.id, -1)));
@@ -1670,6 +1690,7 @@ async function renderExpenseForm(params) {
     await db.put('settings', { key: 'lastcur_' + trip.id, value: selCur });
     toast(editing ? '記録を更新しました ✅' : '記録しました 📝');
     syncNow(false); /* オンライン&設定済みなら自動送信 */
+    scrollToItemId = record.id;
     goBack();
   });
 
@@ -2015,6 +2036,7 @@ async function renderCashForm(params) {
     };
     await db.put('cashEntries', record);
     toast(editing ? '記録を更新しました ✅' : '記録しました 💵');
+    scrollToItemId = record.id;
     goBack();
   });
 
@@ -2075,6 +2097,7 @@ async function renderCategories() {
     [c.order, other.order] = [other.order, c.order];
     await db.put('categories', c);
     await db.put('categories', other);
+    preserveScrollY = window.scrollY;
     await renderRoute();
   }
 
@@ -2385,7 +2408,7 @@ async function renderSettings() {
       <button class="settings-item" id="si-sync"><span class="s-icon">📤</span><span class="s-label">スプレッドシート同期</span><span class="badge-soon" id="sync-badge">›</span></button>
     </div>
     <div class="about">
-      <div>旅財布 v1.0.2</div>
+      <div>旅財布 v1.0.3</div>
       <div class="storage" id="storage-info">ストレージ使用量を確認中…</div>
       <div class="storage" id="sw-info"></div>
     </div>`;
