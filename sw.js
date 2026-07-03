@@ -1,5 +1,5 @@
 /* tabi-budget Service Worker — アプリシェルをキャッシュしてオフライン動作させる */
-const CACHE_NAME = 'tabi-budget-v1.0.0';
+const CACHE_NAME = 'tabi-budget-v1.0.1';
 const APP_SHELL = [
   './',
   './index.html',

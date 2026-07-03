@@ -259,7 +259,7 @@
     user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
   }
   .row-btn:last-child { border-bottom: none; }
-  .row-main { min-width: 0; }
+  .row-main { min-width: 0; flex: 1; }
   .row-title { font-weight: 600; display: block; }
   .row-sub { font-size: 12px; color: var(--c-text-sub); display: block; }
   .row-amount { text-align: right; white-space: nowrap; font-weight: 700; flex-shrink: 0; }
@@ -1092,37 +1092,66 @@ async function renderBudgetList(params) {
     db.getAll('categories'),
   ]);
   cats.sort((a, b) => a.order - b.order);
+  const catMap = Object.fromEntries(cats.map((c) => [c.id, c]));
+  const sortMode = (await db.get('settings', 'sort_budget'))?.value || 'category';
 
   const toJPY = (it) => it.amount * rateFor(trip, it.currency, 'budget');
   const totalJPY = items.reduce((sum, it) => sum + toJPY(it), 0);
   const hasForeign = items.some((it) => it.currency !== 'JPY');
 
-  const sections = cats.map((cat) => {
-    const list = items.filter((it) => it.categoryId === cat.id)
-      .sort((a, b) => ((a.date || '9999') < (b.date || '9999') ? -1 : 1));
-    if (!list.length) return '';
-    const sub = list.reduce((s, it) => s + toJPY(it), 0);
-    const rows = list.map((it) => {
-      const sym = symbolOf(trip, it.currency);
-      const parts = [];
-      if (it.date) parts.push(fmtDate(it.date));
-      if (it.quantity > 1) parts.push(`${sym}${fmtMoney(it.unitPrice, it.currency)} × ${it.quantity}`);
-      if (it.memo) parts.push(esc(it.memo));
-      return `
+  /* showCat=true: 行にカテゴリの絵文字と名前を出す(日付順表示用) */
+  const rowHtml = (it, showCat) => {
+    const cat = catMap[it.categoryId];
+    const sym = symbolOf(trip, it.currency);
+    const parts = [];
+    if (!showCat && it.date) parts.push(fmtDate(it.date));
+    if (showCat && cat) parts.push(cat.name);
+    if (it.quantity > 1) parts.push(`${sym}${fmtMoney(it.unitPrice, it.currency)} × ${it.quantity}`);
+    if (it.memo) parts.push(esc(it.memo));
+    return `
         <button class="row-btn" data-id="${esc(it.id)}">
+          ${showCat ? `<span class="row-icon">${cat ? esc(cat.icon) : '🏷️'}</span>` : ''}
           <span class="row-main">
-            <span class="row-title">${esc(it.title) || esc(cat.name)}</span>
-            <span class="row-sub">${parts.join('・')}</span>
+            <span class="row-title">${esc(it.title) || (cat ? esc(cat.name) : '')}</span>
+            ${parts.length ? `<span class="row-sub">${parts.join('・')}</span>` : ''}
           </span>
           <span class="row-amount">${sym}${fmtMoney(it.amount, it.currency)}
             ${it.currency === 'JPY' ? '' : `<span class="jpy">≈ ¥${fmtMoney(toJPY(it))}</span>`}
           </span>
         </button>`;
+  };
+
+  let sections;
+  if (sortMode === 'date') {
+    /* 日付順(古い日が上)。日付未定は最後にまとめる */
+    const dated = items.filter((i) => i.date).sort((a, b) => a.date.localeCompare(b.date));
+    const undated = items.filter((i) => !i.date);
+    const dates = [...new Set(dated.map((i) => i.date))];
+    sections = dates.map((d) => {
+      const list = dated.filter((i) => i.date === d);
+      const sub = list.reduce((s, it) => s + toJPY(it), 0);
+      return `
+      <div class="cat-head"><span class="ch-name">${fmtDateFull(d)}</span><span class="ch-sum">¥${fmtMoney(sub)}</span></div>
+      <div class="card" style="padding:6px 16px">${list.map((it) => rowHtml(it, true)).join('')}</div>`;
     }).join('');
-    return `
+    if (undated.length) {
+      const sub = undated.reduce((s, it) => s + toJPY(it), 0);
+      sections += `
+      <div class="cat-head"><span class="ch-name">📌 日付未定</span><span class="ch-sum">¥${fmtMoney(sub)}</span></div>
+      <div class="card" style="padding:6px 16px">${undated.map((it) => rowHtml(it, true)).join('')}</div>`;
+    }
+  } else {
+    /* カテゴリ別(カテゴリ管理の並び順) */
+    sections = cats.map((cat) => {
+      const list = items.filter((it) => it.categoryId === cat.id)
+        .sort((a, b) => ((a.date || '9999') < (b.date || '9999') ? -1 : 1));
+      if (!list.length) return '';
+      const sub = list.reduce((s, it) => s + toJPY(it), 0);
+      return `
       <div class="cat-head"><span class="ch-name">${esc(cat.icon)} ${esc(cat.name)}</span><span class="ch-sum">¥${fmtMoney(sub)}</span></div>
-      <div class="card" style="padding:6px 16px">${rows}</div>`;
-  }).join('');
+      <div class="card" style="padding:6px 16px">${list.map((it) => rowHtml(it, false)).join('')}</div>`;
+    }).join('');
+  }
 
   el.innerHTML = `
     <div class="back-row"><button class="btn-back" id="btn-back">‹ ${esc(trip.title)}に戻る</button></div>
@@ -1131,6 +1160,11 @@ async function renderBudgetList(params) {
       <div class="tc-amount">¥${fmtMoney(totalJPY)}</div>
       <div class="tc-sub">${items.length}件の予算${hasForeign ? '・外貨は予算レートで換算' : ''}</div>
     </div>
+    ${items.length ? `
+    <div class="seg" style="margin:14px 0 0">
+      <button type="button" data-s="category" class="${sortMode === 'category' ? 'active' : ''}">カテゴリ別</button>
+      <button type="button" data-s="date" class="${sortMode === 'date' ? 'active' : ''}">日付順</button>
+    </div>` : ''}
     ${items.length ? sections : `
       <div class="card empty-state" style="margin-top:16px">
         <div class="art">💰</div>
@@ -1144,6 +1178,11 @@ async function renderBudgetList(params) {
   const goAdd = () => navigate(`/trip/${trip.id}/budget-form`);
   el.querySelector('#fab-add').addEventListener('click', goAdd);
   el.querySelector('#btn-first-add')?.addEventListener('click', goAdd);
+  el.querySelectorAll('.seg button').forEach((b) =>
+    b.addEventListener('click', async () => {
+      await db.put('settings', { key: 'sort_budget', value: b.dataset.s });
+      await renderRoute();
+    }));
   el.querySelectorAll('.row-btn').forEach((r) =>
     r.addEventListener('click', () => navigate(`/trip/${trip.id}/budget-form/${r.dataset.id}`)));
   return el;
@@ -1331,10 +1370,15 @@ async function renderExpenseList(params) {
     db.getByIndex('expenses', 'tripId', trip.id),
     db.getAll('categories'),
   ]);
+  cats.sort((a, b) => a.order - b.order);
   const catMap = Object.fromEntries(cats.map((c) => [c.id, c]));
   const jpyOf = (it) => it.amountJPY ?? it.amount * rateFor(trip, it.currency, 'actual');
   const totalJPY = items.reduce((s, it) => s + jpyOf(it), 0);
   const hasForeign = items.some((it) => it.currency !== 'JPY');
+
+  /* 並び順: 日付順(既定) or カテゴリ別。並び替えモード中は日付順に固定 */
+  const savedSort = (await db.get('settings', 'sort_expense'))?.value || 'date';
+  const sortMode = expenseReorder ? 'date' : savedSort;
 
   /* 同じ日付の中では手動の並び順(sortOrder)→記録順 */
   const sortGroup = (list) => list.sort((a, b) => {
@@ -1345,25 +1389,35 @@ async function renderExpenseList(params) {
     return (a.createdAt || '').localeCompare(b.createdAt || '');
   });
 
-  const dates = [...new Set(items.map((i) => i.date))].sort().reverse();
-  const sections = dates.map((d) => {
-    const list = sortGroup(items.filter((it) => it.date === d));
-    const sub = list.reduce((s, it) => s + jpyOf(it), 0);
-    const rows = list.map((it, idx) => {
-      const cat = catMap[it.categoryId];
-      const sym = symbolOf(trip, it.currency);
-      const subParts = [cat ? cat.name : '', it.memo ? esc(it.memo) : ''].filter(Boolean).join('・');
-      const inner = `
-          <span class="row-icon">${cat ? esc(cat.icon) : '🏷️'}</span>
+  /* showCat=true: カテゴリの絵文字と名前を表示(日付順用)/ false: 日付を表示(カテゴリ別用) */
+  const rowInner = (it, showCat) => {
+    const cat = catMap[it.categoryId];
+    const sym = symbolOf(trip, it.currency);
+    const parts = [];
+    if (!showCat && it.date) parts.push(fmtDate(it.date));
+    if (showCat && cat) parts.push(cat.name);
+    if (it.memo) parts.push(esc(it.memo));
+    return `
+          ${showCat ? `<span class="row-icon">${cat ? esc(cat.icon) : '🏷️'}</span>` : ''}
           <span class="row-main">
             <span class="row-title">${esc(it.title) || (cat ? esc(cat.name) : '')}</span>
-            <span class="row-sub">${subParts}</span>
+            ${parts.length ? `<span class="row-sub">${parts.join('・')}</span>` : ''}
           </span>
           <span class="row-amount ${it.amount < 0 ? 'amount-minus' : ''}">${sym}${fmtMoney(it.amount, it.currency)}
             ${it.currency === 'JPY' ? '' : `<span class="jpy">≈ ¥${fmtMoney(jpyOf(it))}</span>`}
           </span>`;
-      if (expenseReorder) {
-        return `
+  };
+
+  let sections;
+  if (sortMode === 'date') {
+    const dates = [...new Set(items.map((i) => i.date))].sort(); /* 古い日が上 */
+    sections = dates.map((d) => {
+      const list = sortGroup(items.filter((it) => it.date === d));
+      const sub = list.reduce((s, it) => s + jpyOf(it), 0);
+      const rows = list.map((it, idx) => {
+        const inner = rowInner(it, true);
+        if (expenseReorder) {
+          return `
         <div class="row-btn">
           ${inner}
           <span style="display:flex;gap:6px;flex-shrink:0">
@@ -1371,13 +1425,28 @@ async function renderExpenseList(params) {
             <button class="mini-btn r-down" data-id="${esc(it.id)}" ${idx === list.length - 1 ? 'disabled' : ''} aria-label="下へ">↓</button>
           </span>
         </div>`;
-      }
-      return `<button class="row-btn" data-id="${esc(it.id)}">${inner}</button>`;
-    }).join('');
-    return `
+        }
+        return `<button class="row-btn" data-id="${esc(it.id)}">${inner}</button>`;
+      }).join('');
+      return `
       <div class="date-head"><span class="dh-date">${fmtDateFull(d)}</span><span class="dh-sum">¥${fmtMoney(sub)}</span></div>
       <div class="card" style="padding:6px 16px">${rows}</div>`;
-  }).join('');
+    }).join('');
+  } else {
+    /* カテゴリ別(カテゴリ管理の並び順・小計付き) */
+    sections = cats.map((cat) => {
+      const list = items.filter((it) => it.categoryId === cat.id)
+        .sort((a, b) => (a.date || '').localeCompare(b.date || '') ||
+                        (a.createdAt || '').localeCompare(b.createdAt || ''));
+      if (!list.length) return '';
+      const sub = list.reduce((s, it) => s + jpyOf(it), 0);
+      const rows = list.map((it) =>
+        `<button class="row-btn" data-id="${esc(it.id)}">${rowInner(it, false)}</button>`).join('');
+      return `
+      <div class="cat-head"><span class="ch-name">${esc(cat.icon)} ${esc(cat.name)}</span><span class="ch-sum">¥${fmtMoney(sub)}</span></div>
+      <div class="card" style="padding:6px 16px">${rows}</div>`;
+    }).join('');
+  }
 
   el.innerHTML = `
     <div class="back-row"><button class="btn-back" id="btn-back">‹ ${esc(trip.title)}に戻る</button></div>
@@ -1391,7 +1460,12 @@ async function renderExpenseList(params) {
         <span style="font-size:13px;font-weight:700">↕️ 並び替えモード(同じ日の中で移動)</span>
         <button class="btn-primary" id="btn-reorder-done" style="padding:8px 22px;font-size:13px">完了</button>
       </div>`
-      : (items.length ? `<p class="hint" style="margin:10px 2px -8px">明細を長押しすると並び替えができます</p>` : '')}
+      : (items.length ? `
+    <div class="seg" style="margin:14px 0 0">
+      <button type="button" data-s="date" class="${sortMode === 'date' ? 'active' : ''}">日付順</button>
+      <button type="button" data-s="category" class="${sortMode === 'category' ? 'active' : ''}">カテゴリ別</button>
+    </div>
+    ${sortMode === 'date' ? `<p class="hint" style="margin:8px 2px -8px">明細を長押しすると並び替えができます</p>` : ''}` : '')}
     ${items.length ? sections : `
       <div class="card empty-state" style="margin-top:16px">
         <div class="art">📝</div>
@@ -1405,6 +1479,11 @@ async function renderExpenseList(params) {
   const goAdd = () => navigate(`/trip/${trip.id}/expense-form`);
   el.querySelector('#fab-add')?.addEventListener('click', goAdd);
   el.querySelector('#btn-first-add')?.addEventListener('click', goAdd);
+  el.querySelectorAll('.seg button').forEach((b) =>
+    b.addEventListener('click', async () => {
+      await db.put('settings', { key: 'sort_expense', value: b.dataset.s });
+      await renderRoute();
+    }));
 
   if (expenseReorder) {
     el.querySelector('#btn-reorder-done').addEventListener('click', () => {
@@ -1425,10 +1504,11 @@ async function renderExpenseList(params) {
     el.querySelectorAll('.r-up').forEach((b) => b.addEventListener('click', () => moveItem(b.dataset.id, -1)));
     el.querySelectorAll('.r-down').forEach((b) => b.addEventListener('click', () => moveItem(b.dataset.id, 1)));
   } else {
-    /* タップ=編集、長押し(0.5秒)=並び替えモード */
+    /* タップ=編集、長押し(0.5秒)=並び替えモード(日付順表示のときのみ) */
     el.querySelectorAll('.row-btn').forEach((r) => {
       let timer = null, fired = false;
       const start = () => {
+        if (sortMode !== 'date') return;
         fired = false;
         timer = setTimeout(() => {
           fired = true;
@@ -1719,10 +1799,12 @@ async function renderCashList(params) {
     return el;
   }
 
-  const [entries, expenses] = await Promise.all([
+  const [entries, expenses, cats] = await Promise.all([
     db.getByIndex('cashEntries', 'tripId', trip.id),
     db.getByIndex('expenses', 'tripId', trip.id),
+    db.getAll('categories'),
   ]);
+  const catMap = Object.fromEntries(cats.map((c) => [c.id, c]));
   const cashSpends = expenses.filter((e) => e.paymentMethod === 'cash' && e.currency !== 'JPY');
 
   const sections = foreign.map((cur) => {
@@ -1754,8 +1836,9 @@ async function renderCashList(params) {
         sub = `${t.e.sourceJPY ? `元手 ¥${fmtMoney(t.e.sourceJPY)}` : ''}${rate}`;
         clickAttr = `data-cash="${esc(t.e.id)}"`;
       } else {
-        title = esc(t.e.title) || '現金払い';
-        sub = '費用の記録から';
+        const cat = catMap[t.e.categoryId];
+        title = esc(t.e.title) || (cat ? esc(cat.name) : '現金払い');
+        sub = [cat ? esc(cat.name) : '', t.e.memo ? esc(t.e.memo) : ''].filter(Boolean).join('・');
         clickAttr = `data-exp="${esc(t.e.id)}"`;
       }
       return `
@@ -2291,7 +2374,7 @@ async function renderSettings() {
       <button class="settings-item" id="si-sync"><span class="s-icon">📤</span><span class="s-label">スプレッドシート同期</span><span class="badge-soon" id="sync-badge">›</span></button>
     </div>
     <div class="about">
-      <div>旅財布 v1.0.0</div>
+      <div>旅財布 v1.0.1</div>
       <div class="storage" id="storage-info">ストレージ使用量を確認中…</div>
       <div class="storage" id="sw-info"></div>
     </div>`;
