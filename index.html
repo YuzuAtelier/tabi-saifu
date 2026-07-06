@@ -645,9 +645,16 @@ function setHeaderTitle(text) {
 }
 
 let renderSeq = 0;
-/* 一覧に戻ったときスクロール位置を制御するための予約(次のrenderRouteで1回だけ使われる) */
-let scrollToItemId = null;   /* この行が見えるようにスクロール(登録・編集からの復帰用) */
+/* 一覧に戻ったときスクロール位置を制御するための予約 */
+let scrollToItemId = null;   /* この項目が一覧に現れたら中央にスクロール(項目を開いて戻ったとき等) */
+let scrollToItemGrace = 0;   /* 目的の一覧に戻るまで、数回のrender分だけIDを保持する猶予 */
 let preserveScrollY = null;  /* このY座標を維持(並び替えの↑↓用。トップに戻さない) */
+
+/* 次にその項目が一覧に現れたら中央にスクロールするよう予約する(詳細・編集を1枚挟んで戻る用) */
+function queueScrollTo(id) {
+  scrollToItemId = id;
+  scrollToItemGrace = 2;
+}
 
 async function renderRoute() {
   const seq = ++renderSeq;
@@ -666,12 +673,16 @@ async function renderRoute() {
     preserveScrollY = null;
     window.scrollTo(0, y);
   } else if (scrollToItemId) {
-    const id = scrollToItemId;
-    scrollToItemId = null;
-    const target = el.querySelector(`[data-id="${CSS.escape(id)}"]`) ||
-                   el.querySelector(`[data-cash="${CSS.escape(id)}"]`); /* 現金の入出金行はdata-cash属性 */
-    if (target) target.scrollIntoView({ block: 'center' });
-    else window.scrollTo(0, 0);
+    const target = el.querySelector(`[data-id="${CSS.escape(scrollToItemId)}"]`) ||
+                   el.querySelector(`[data-cash="${CSS.escape(scrollToItemId)}"]`); /* 現金の入出金行はdata-cash属性 */
+    if (target) {
+      scrollToItemId = null;
+      target.scrollIntoView({ block: 'center' });
+    } else {
+      /* まだ目的の一覧ではない(詳細・編集画面など)。上から表示しつつ、猶予が尽きるまでIDは保持 */
+      window.scrollTo(0, 0);
+      if (--scrollToItemGrace <= 0) scrollToItemId = null;
+    }
   } else {
     window.scrollTo(0, 0);
   }
@@ -731,7 +742,7 @@ async function renderHome() {
     `<button class="fab" id="fab-add" aria-label="旅行を登録">＋</button>`;
 
   el.querySelectorAll('.trip-card').forEach((c) =>
-    c.addEventListener('click', () => navigate('/trip/' + c.dataset.id)));
+    c.addEventListener('click', () => { queueScrollTo(c.dataset.id); navigate('/trip/' + c.dataset.id); }));
   el.querySelector('#fab-add').addEventListener('click', () => navigate('/trip-form'));
   return el;
 }
@@ -1209,7 +1220,7 @@ async function renderBudgetList(params) {
       await renderRoute();
     }));
   el.querySelectorAll('.row-btn').forEach((r) =>
-    r.addEventListener('click', () => navigate(`/trip/${trip.id}/budget-form/${r.dataset.id}`)));
+    r.addEventListener('click', () => { queueScrollTo(r.dataset.id); navigate(`/trip/${trip.id}/budget-form/${r.dataset.id}`); }));
   return el;
 }
 
@@ -1368,7 +1379,7 @@ async function renderBudgetForm(params) {
     };
     await db.put('budgetItems', record);
     toast(editing ? '予算を更新しました ✅' : '予算を追加しました 💰');
-    scrollToItemId = record.id;
+    queueScrollTo(record.id);
     goBack();
   });
 
@@ -1550,6 +1561,7 @@ async function renderExpenseList(params) {
       r.addEventListener('pointercancel', cancel);
       r.addEventListener('click', () => {
         if (fired) return;
+        queueScrollTo(r.dataset.id);
         navigate(`/trip/${trip.id}/expense-form/${r.dataset.id}`);
       });
     });
@@ -1690,7 +1702,7 @@ async function renderExpenseForm(params) {
     await db.put('settings', { key: 'lastcur_' + trip.id, value: selCur });
     toast(editing ? '記録を更新しました ✅' : '記録しました 📝');
     syncNow(false); /* オンライン&設定済みなら自動送信 */
-    scrollToItemId = record.id;
+    queueScrollTo(record.id);
     goBack();
   });
 
@@ -1913,9 +1925,9 @@ async function renderCashList(params) {
   el.querySelector('#btn-back').addEventListener('click', () => navigate('/trip/' + trip.id));
   el.querySelector('#fab-add').addEventListener('click', () => navigate(`/trip/${trip.id}/cash-form`));
   el.querySelectorAll('[data-cash]').forEach((r) =>
-    r.addEventListener('click', () => navigate(`/trip/${trip.id}/cash-form/${r.dataset.cash}`)));
+    r.addEventListener('click', () => { queueScrollTo(r.dataset.cash); navigate(`/trip/${trip.id}/cash-form/${r.dataset.cash}`); }));
   el.querySelectorAll('[data-exp]').forEach((r) =>
-    r.addEventListener('click', () => navigate(`/trip/${trip.id}/expense-form/${r.dataset.exp}`)));
+    r.addEventListener('click', () => { queueScrollTo(r.dataset.exp); navigate(`/trip/${trip.id}/expense-form/${r.dataset.exp}`); }));
   return el;
 }
 
@@ -2036,7 +2048,7 @@ async function renderCashForm(params) {
     };
     await db.put('cashEntries', record);
     toast(editing ? '記録を更新しました ✅' : '記録しました 💵');
-    scrollToItemId = record.id;
+    queueScrollTo(record.id);
     goBack();
   });
 
@@ -2408,7 +2420,7 @@ async function renderSettings() {
       <button class="settings-item" id="si-sync"><span class="s-icon">📤</span><span class="s-label">スプレッドシート同期</span><span class="badge-soon" id="sync-badge">›</span></button>
     </div>
     <div class="about">
-      <div>旅財布 v1.0.3</div>
+      <div>旅財布 v1.0.4</div>
       <div class="storage" id="storage-info">ストレージ使用量を確認中…</div>
       <div class="storage" id="sw-info"></div>
     </div>`;
