@@ -1,11 +1,12 @@
 /* tabi-budget Service Worker — アプリシェルをキャッシュしてオフライン動作させる */
-const CACHE_NAME = 'tabi-budget-v1.0.4';
+const CACHE_NAME = 'tabi-budget-v1.1.0';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './lib/xlsx.full.min.js',
 ];
 
 self.addEventListener('install', (event) => {

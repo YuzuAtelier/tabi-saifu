@@ -1103,10 +1103,12 @@ async function renderTripDetail(params) {
     <div class="card">${currencyRows}</div>
 
     <div class="form-actions">
-      <button class="btn-secondary" id="btn-edit" style="flex:1">✏️ 旅行情報を編集する</button>
+      <button class="btn-secondary" id="btn-export-xlsx" style="flex:1">📥 Excelに出力</button>
+      <button class="btn-secondary" id="btn-edit" style="flex:1">✏️ 旅行情報を編集</button>
     </div>`;
 
   el.querySelector('#btn-back').addEventListener('click', () => navigate('/'));
+  el.querySelector('#btn-export-xlsx').addEventListener('click', () => exportTripExcel(trip));
   el.querySelector('#btn-edit').addEventListener('click', () => navigate('/trip-form/' + trip.id));
   el.querySelector('#tile-budget').addEventListener('click', () => navigate(`/trip/${trip.id}/budget`));
   el.querySelector('#tile-expense').addEventListener('click', () => navigate(`/trip/${trip.id}/expenses`));
@@ -2063,6 +2065,183 @@ async function renderCashForm(params) {
 }
 
 /* =========================================================
+ * Excel出力(旅行ごとに Budget / Cost / Cash のシート構成)
+ * SheetJSは出力時に初めて読み込む(lib/xlsx.full.min.js を同梱)
+ * =======================================================*/
+let xlsxLoader = null;
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve();
+  if (!xlsxLoader) {
+    xlsxLoader = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'lib/xlsx.full.min.js';
+      s.onload = resolve;
+      s.onerror = () => { xlsxLoader = null; reject(new Error('SheetJSの読み込みに失敗しました')); };
+      document.head.appendChild(s);
+    });
+  }
+  return xlsxLoader;
+}
+
+const XLSX_COL_WIDTH = {
+  '日付': 11, 'カテゴリ': 12, '詳細': 28, '通貨': 7, '単価': 10, '数量': 7,
+  '費用': 12, '日本円換算': 12, '日本円': 12, '支払い方法': 10, 'メモ': 28,
+  '種類': 12, '入金': 12, '出金': 12, '残高': 12, '予算': 12,
+};
+function colsFor(header, extraSummaryCols = 0) {
+  const cols = header.map((h) => ({ wch: XLSX_COL_WIDTH[h] || 12 }));
+  cols.push({ wch: 3 }); /* 集計表との間の空き列 */
+  for (let i = 0; i < extraSummaryCols; i++) cols.push({ wch: 12 });
+  return cols;
+}
+
+/* 集計表をメイン表の右側(offset列目)に重ねて配置する */
+function placeRight(rows, offset, block) {
+  block.forEach((cells, i) => {
+    if (!rows[i]) rows[i] = [];
+    while (rows[i].length < offset) rows[i].push(null);
+    cells.forEach((c, j) => { rows[i][offset + j] = c; });
+  });
+}
+
+const excelDate = (iso) => (iso ? iso.replace(/-/g, '/') : '');
+
+async function buildTripWorkbook(trip) {
+  await loadXLSX();
+  const [bItems, eItems, cEntries, cats] = await Promise.all([
+    db.getByIndex('budgetItems', 'tripId', trip.id),
+    db.getByIndex('expenses', 'tripId', trip.id),
+    db.getByIndex('cashEntries', 'tripId', trip.id),
+    db.getAll('categories'),
+  ]);
+  cats.sort((a, b) => a.order - b.order);
+  const catName = (id) => cats.find((c) => c.id === id)?.name || '';
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const payLabel = (p) => (p === 'cash' ? '現金' : p === 'card' ? 'カード' : '');
+
+  const wb = XLSX.utils.book_new();
+
+  /* ---- Budgetシート ---- */
+  const bForeign = bItems.some((i) => i.currency !== 'JPY');
+  const bJPY = (it) => it.amount * rateFor(trip, it.currency, 'budget');
+  const bSorted = [...bItems].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
+  const bHeader = bForeign
+    ? ['日付', 'カテゴリ', '詳細', '通貨', '単価', '数量', '費用', '日本円換算', 'メモ']
+    : ['日付', 'カテゴリ', '詳細', '単価', '数量', '費用', 'メモ'];
+  const bRows = [bHeader, ...bSorted.map((it) => (bForeign
+    ? [excelDate(it.date), catName(it.categoryId), it.title, it.currency, it.unitPrice, it.quantity, it.amount, r2(bJPY(it)), it.memo]
+    : [excelDate(it.date), catName(it.categoryId), it.title, it.unitPrice, it.quantity, it.amount, it.memo]))];
+  const bSummary = [['カテゴリ', '予算']];
+  cats.forEach((c) => {
+    const s = bSorted.filter((i) => i.categoryId === c.id).reduce((sum, i) => sum + bJPY(i), 0);
+    if (s !== 0) bSummary.push([c.name, Math.round(s)]);
+  });
+  bSummary.push(['合計', Math.round(bSorted.reduce((s, i) => s + bJPY(i), 0))]);
+  /* 集計の配置位置と列幅は、行配列を伸ばす前に確定させておく */
+  const bCols = colsFor(bHeader, 2);
+  placeRight(bRows, bHeader.length + 1, bSummary);
+  const wsB = XLSX.utils.aoa_to_sheet(bRows);
+  wsB['!cols'] = bCols;
+  XLSX.utils.book_append_sheet(wb, wsB, 'Budget');
+
+  /* ---- Costシート ---- */
+  const eForeign = eItems.some((i) => i.currency !== 'JPY');
+  const eJPY = (it) => it.amountJPY ?? it.amount * rateFor(trip, it.currency, 'actual');
+  const eSorted = [...eItems].sort((a, b) => {
+    const d = (a.date || '').localeCompare(b.date || '');
+    if (d) return d;
+    const ao = a.sortOrder, bo = b.sortOrder;
+    if (ao != null && bo != null && ao !== bo) return ao - bo;
+    return (a.createdAt || '').localeCompare(b.createdAt || '');
+  });
+  const eHeader = eForeign
+    ? ['日付', 'カテゴリ', '詳細', '通貨', '単価', '数量', '費用', '日本円', '支払い方法', 'メモ']
+    : ['日付', 'カテゴリ', '詳細', '単価', '数量', '費用', '支払い方法', 'メモ'];
+  const eRows = [eHeader, ...eSorted.map((it) => (eForeign
+    ? [excelDate(it.date), catName(it.categoryId), it.title, it.currency, it.unitPrice, it.quantity, it.amount, r2(eJPY(it)), payLabel(it.paymentMethod), it.memo]
+    : [excelDate(it.date), catName(it.categoryId), it.title, it.unitPrice, it.quantity, it.amount, payLabel(it.paymentMethod), it.memo]))];
+  /* 右側集計①: カテゴリ別(日本円) */
+  const eSumCat = [['カテゴリ', '費用']];
+  cats.forEach((c) => {
+    const s = eSorted.filter((i) => i.categoryId === c.id).reduce((sum, i) => sum + eJPY(i), 0);
+    if (s !== 0) eSumCat.push([c.name, Math.round(s)]);
+  });
+  eSumCat.push(['合計', Math.round(eSorted.reduce((s, i) => s + eJPY(i), 0))]);
+  /* 右側集計②: 日別(日本円) */
+  const eSumDay = [['日付', '費用']];
+  [...new Set(eSorted.map((i) => i.date))].sort().forEach((d) => {
+    const s = eSorted.filter((i) => i.date === d).reduce((sum, i) => sum + eJPY(i), 0);
+    eSumDay.push([excelDate(d), Math.round(s)]);
+  });
+  /* 1つ目の集計を置くとヘッダー行の配列が伸びるため、位置と列幅を先に確定させる */
+  const eCatOffset = eHeader.length + 1;
+  const eDayOffset = eHeader.length + 4;
+  const eCols = colsFor(eHeader, 5);
+  placeRight(eRows, eCatOffset, eSumCat);
+  placeRight(eRows, eDayOffset, eSumDay);
+  const wsC = XLSX.utils.aoa_to_sheet(eRows);
+  wsC['!cols'] = eCols;
+  XLSX.utils.book_append_sheet(wb, wsC, 'Cost');
+
+  /* ---- Cashシート(現金データがある旅行のみ) ---- */
+  const cashSpends = eItems.filter((e) => e.paymentMethod === 'cash' && e.currency !== 'JPY');
+  if (cEntries.length || cashSpends.length) {
+    const cRows = [];
+    const rank = { in: 0, out: 1, adjust: 2 };
+    for (const cur of (trip.currencies || []).filter((c) => c.code !== 'JPY')) {
+      const sym = cur.symbol || cur.code;
+      const timeline = [
+        ...cEntries.filter((e) => e.currency === cur.code)
+          .map((e) => ({ kind: e.type === 'adjust' ? 'adjust' : 'in', e })),
+        ...cashSpends.filter((x) => x.currency === cur.code)
+          .map((x) => ({ kind: 'out', e: x })),
+      ].sort((a, b) =>
+        (a.e.date || '').localeCompare(b.e.date || '') ||
+        (rank[a.kind] - rank[b.kind]) ||
+        (a.e.createdAt || '').localeCompare(b.e.createdAt || ''));
+      if (!timeline.length) continue;
+      cRows.push([`${cur.name}(${sym})`]);
+      cRows.push(['日付', '種類', '詳細', '入金', '出金', '残高', 'メモ']);
+      let bal = 0;
+      for (const t of timeline) {
+        const delta = t.kind === 'out' ? -t.e.amount : t.e.amount;
+        bal = r2(bal + delta);
+        if (t.kind === 'out') {
+          cRows.push([excelDate(t.e.date), catName(t.e.categoryId), t.e.title,
+                      null, t.e.amount, bal, t.e.memo]);
+        } else {
+          const ct = CASH_TYPES[t.e.type] || CASH_TYPES.exchange;
+          const rateMemo = (t.e.sourceJPY && t.e.amount > 0)
+            ? `元手¥${fmtMoney(t.e.sourceJPY)}・実質${Math.round(t.e.sourceJPY / t.e.amount * 1000) / 1000}円/${sym}` : '';
+          cRows.push([excelDate(t.e.date), ct.label, t.e.memo || '',
+                      delta >= 0 ? delta : null, delta < 0 ? -delta : null, bal, rateMemo]);
+        }
+      }
+      cRows.push([]); /* 通貨ブロックの区切り */
+    }
+    const wsCash = XLSX.utils.aoa_to_sheet(cRows);
+    wsCash['!cols'] = colsFor(['日付', '種類', '詳細', '入金', '出金', '残高', 'メモ']);
+    XLSX.utils.book_append_sheet(wb, wsCash, 'Cash');
+  }
+
+  return wb;
+}
+
+async function exportTripExcel(trip) {
+  try {
+    toast('Excelファイルを作成しています…');
+    const wb = await buildTripWorkbook(trip);
+    const ym = trip.startDate.slice(2, 4) + trip.startDate.slice(5, 7);
+    const safeTitle = trip.title.replace(/[\\/:*?"<>|]/g, '_');
+    XLSX.writeFile(wb, `${ym}_${safeTitle}.xlsx`);
+    toast('Excelファイルをダウンロードしました 📥');
+  } catch (err) {
+    console.error('Excel出力に失敗:', err);
+    toast('Excel出力に失敗しました。通信状況を確認してもう一度お試しください');
+  }
+}
+
+/* =========================================================
  * 画面: カテゴリ管理
  * =======================================================*/
 async function renderCategories() {
@@ -2420,7 +2599,7 @@ async function renderSettings() {
       <button class="settings-item" id="si-sync"><span class="s-icon">📤</span><span class="s-label">スプレッドシート同期</span><span class="badge-soon" id="sync-badge">›</span></button>
     </div>
     <div class="about">
-      <div>旅財布 v1.0.4</div>
+      <div>旅財布 v1.1.0</div>
       <div class="storage" id="storage-info">ストレージ使用量を確認中…</div>
       <div class="storage" id="sw-info"></div>
     </div>`;
