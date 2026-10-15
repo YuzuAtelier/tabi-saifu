@@ -351,6 +351,22 @@
     padding: 8px 16px; text-align: center;
   }
 
+  /* ===== バックアップの声かけ ===== */
+  .backup-banner {
+    background: #fff7ed; border: 1.5px solid #fed7aa; border-radius: var(--radius);
+    padding: 14px 16px; margin-bottom: 14px;
+  }
+  .backup-banner .bb-title { font-size: 14px; font-weight: 700; color: #9a3412; }
+  .backup-banner .bb-text { font-size: 12px; color: #9a3412; margin: 2px 0 10px; line-height: 1.6; }
+  .backup-banner .bb-actions { display: flex; gap: 10px; align-items: center; }
+  .backup-banner .btn-primary { padding: 9px 20px; font-size: 13px; }
+  .bb-later {
+    background: none; border: none; color: #9a3412; font-size: 13px; font-weight: 600;
+    cursor: pointer; padding: 8px; font-family: inherit;
+  }
+  .protect-ok { color: #047857; }
+  .protect-warn { color: #b45309; }
+
   /* ===== トースト ===== */
   #toast {
     position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom));
@@ -470,12 +486,16 @@ const db = {
   async put(store, value) {
     await this.open();
     if (this._mem) { this._mem[store].set(value[STORE_KEYS[store]], value); return; }
-    return this._tx(store, 'readwrite', (s) => s.put(value));
+    const r = await this._tx(store, 'readwrite', (s) => s.put(value));
+    if (TRACKED_STORES.has(store)) markDataChanged();
+    return r;
   },
   async delete(store, key) {
     await this.open();
     if (this._mem) { this._mem[store].delete(key); return; }
-    return this._tx(store, 'readwrite', (s) => s.delete(key));
+    const r = await this._tx(store, 'readwrite', (s) => s.delete(key));
+    if (TRACKED_STORES.has(store)) markDataChanged();
+    return r;
   },
   async deleteByIndex(store, index, value) {
     await this.open();
@@ -485,11 +505,13 @@ const db = {
       }
       return;
     }
-    return this._tx(store, 'readwrite', (s) => {
+    const r = await this._tx(store, 'readwrite', (s) => {
       const req = s.index(index).getAllKeys(value);
       req.onsuccess = () => req.result.forEach((k) => s.delete(k));
       return req;
     });
+    if (TRACKED_STORES.has(store)) markDataChanged();
+    return r;
   },
   async count(store) {
     await this.open();
@@ -497,6 +519,128 @@ const db = {
     return this._tx(store, 'readonly', (s) => s.count());
   },
 };
+
+/* =========================================================
+ * データ保護: 永続ストレージの要求とバックアップの記録
+ * ブラウザは「ただのサイトのデータ」を容量不足時などに自動削除することがあるため、
+ * 永続化を要求したうえで、未バックアップの変更があれば声をかける。
+ * =======================================================*/
+const TRACKED_STORES = new Set(['trips', 'budgetItems', 'expenses', 'cashEntries', 'categories']);
+const BK_KEYS = {
+  last: 'tabisaifu.lastBackupAt',
+  changes: 'tabisaifu.changesSinceBackup',
+  snooze: 'tabisaifu.backupSnoozeUntil',
+};
+const BACKUP_REMIND_CHANGES = 10; /* 変更がこの件数以上で声をかける */
+const BACKUP_REMIND_DAYS = 3;     /* 前回からこの日数以上たって変更があれば声をかける */
+
+function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* 保存できない環境では何もしない */ } }
+function lsAvailable() {
+  try { localStorage.setItem('tabisaifu.__t', '1'); localStorage.removeItem('tabisaifu.__t'); return true; }
+  catch { return false; }
+}
+function markDataChanged() {
+  lsSet(BK_KEYS.changes, String((parseInt(lsGet(BK_KEYS.changes), 10) || 0) + 1));
+}
+function markBackedUp() {
+  lsSet(BK_KEYS.last, new Date().toISOString());
+  lsSet(BK_KEYS.changes, '0');
+  lsSet(BK_KEYS.snooze, '');
+}
+function backupState() {
+  return { last: lsGet(BK_KEYS.last), changes: parseInt(lsGet(BK_KEYS.changes), 10) || 0 };
+}
+function fmtDateTime(iso) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/* 声かけが必要ならメッセージを返す(不要ならnull) */
+function backupReminderMessage(hasData) {
+  if (!hasData || db.isMemoryMode() || !lsAvailable()) return null;
+  const snooze = Number(lsGet(BK_KEYS.snooze));
+  if (snooze && Date.now() < snooze) return null;
+  const { last, changes } = backupState();
+  if (!last) return 'まだ一度もバックアップしていません。スマホの不具合などでデータが消えても戻せるように、保存しておきましょう。';
+  if (changes <= 0) return null;
+  const days = (Date.now() - new Date(last).getTime()) / 864e5;
+  if (changes >= BACKUP_REMIND_CHANGES || days >= BACKUP_REMIND_DAYS) {
+    return `前回のバックアップ(${fmtDateTime(last)})から${changes}件の変更があります。`;
+  }
+  return null;
+}
+
+function backupBannerHtml(message) {
+  return `
+    <div class="backup-banner">
+      <div class="bb-title">💾 バックアップしましょう</div>
+      <div class="bb-text">${esc(message)}</div>
+      <div class="bb-actions">
+        <button class="btn-primary bb-now" type="button">今すぐ保存する</button>
+        <button class="bb-later" type="button">あとで</button>
+      </div>
+    </div>`;
+}
+function wireBackupBanner(el) {
+  el.querySelector('.bb-now')?.addEventListener('click', async () => {
+    if (await runBackup()) el.querySelector('.backup-banner')?.remove();
+  });
+  el.querySelector('.bb-later')?.addEventListener('click', () => {
+    lsSet(BK_KEYS.snooze, String(Date.now() + 864e5)); /* 24時間は声をかけない */
+    el.querySelector('.backup-banner')?.remove();
+  });
+}
+
+async function buildBackupFile() {
+  const data = {};
+  for (const s of BACKUP_STORES) data[s] = await db.getAll(s);
+  const payload = { app: 'tabi-budget', version: 1, exportedAt: new Date().toISOString(), data };
+  return new File([JSON.stringify(payload, null, 2)], `tabisaifu_backup_${todayISO()}.json`,
+                  { type: 'application/json' });
+}
+
+/* スマホの共有メニュー(Googleドライブ等)で保存。非対応ならダウンロード。成功したらtrue */
+async function runBackup(mode = 'auto') {
+  try {
+    const file = await buildBackupFile();
+    if (mode !== 'download' && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: '旅財布のバックアップ' });
+      } catch (err) {
+        if (err.name === 'AbortError') { toast('バックアップをキャンセルしました'); return false; }
+        throw err;
+      }
+      markBackedUp();
+      toast('バックアップを保存しました 💾');
+      return true;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file);
+    a.download = file.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    markBackedUp();
+    toast('バックアップをダウンロードしました 💾');
+    return true;
+  } catch (err) {
+    console.error('バックアップに失敗:', err);
+    toast('バックアップに失敗しました。もう一度お試しください');
+    return false;
+  }
+}
+
+/* ブラウザに「このデータは自動削除しないで」と要求する */
+async function requestPersistentStorage() {
+  if (!navigator.storage?.persist) return null;
+  try {
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch (err) {
+    console.warn('永続ストレージの要求に失敗:', err);
+    return null;
+  }
+}
 
 /* 標準カテゴリ(初回のみ投入) */
 const DEFAULT_CATEGORIES = [
@@ -703,8 +847,11 @@ async function renderHome() {
         <p class="lead">まだ旅行がありません</p>
         <p class="sub">最初の旅行を登録して、予算づくりから始めましょう</p>
         <button class="btn-primary" id="btn-add-trip">＋ 旅行を登録する</button>
+        <p class="sub" style="margin:22px 0 8px">以前のバックアップファイルがある場合は</p>
+        <button class="btn-add-row" id="btn-restore">📂 バックアップから復元する</button>
       </div>`;
     el.querySelector('#btn-add-trip').addEventListener('click', () => navigate('/trip-form'));
+    el.querySelector('#btn-restore').addEventListener('click', () => navigate('/backup'));
     return el;
   }
 
@@ -735,11 +882,14 @@ async function renderHome() {
   const section = (title, list) =>
     list.length ? `<h2 class="section-title">${title}</h2>` + list.map(cardHtml).join('') : '';
 
+  const reminder = backupReminderMessage(true);
   el.innerHTML =
+    (reminder ? `<div style="margin-top:4px">${backupBannerHtml(reminder)}</div>` : '') +
     section('🏖️ 旅行中', ongoing) +
     section('🛫 今後の旅行', upcoming) +
     section('📚 過去の旅行', past) +
     `<button class="fab" id="fab-add" aria-label="旅行を登録">＋</button>`;
+  wireBackupBanner(el);
 
   el.querySelectorAll('.trip-card').forEach((c) =>
     c.addEventListener('click', () => { queueScrollTo(c.dataset.id); navigate('/trip/' + c.dataset.id); }));
@@ -1077,9 +1227,12 @@ async function renderTripDetail(params) {
     </div>`;
   }).join('');
 
+  const reminder = backupReminderMessage(true);
+
   el.innerHTML = `
     <div class="back-row"><button class="btn-back" id="btn-back">‹ 一覧に戻る</button></div>
     <div class="detail-head">${badge}</div>
+    ${reminder ? backupBannerHtml(reminder) : ''}
 
     <h2 class="section-title">📌 この旅のメニュー</h2>
     <div class="menu-grid">
@@ -1108,6 +1261,7 @@ async function renderTripDetail(params) {
     </div>`;
 
   el.querySelector('#btn-back').addEventListener('click', () => navigate('/'));
+  wireBackupBanner(el);
   el.querySelector('#btn-export-xlsx').addEventListener('click', () => exportTripExcel(trip));
   el.querySelector('#btn-edit').addEventListener('click', () => navigate('/trip-form/' + trip.id));
   el.querySelector('#tile-budget').addEventListener('click', () => navigate(`/trip/${trip.id}/budget`));
@@ -2504,18 +2658,25 @@ async function renderBackup() {
   const counts = {};
   for (const s of BACKUP_STORES) counts[s] = await db.count(s);
 
+  const { last, changes } = backupState();
+  const lastText = last
+    ? `最終バックアップ: ${fmtDateTime(last)}${changes > 0 ? `(その後 ${changes}件の変更)` : '(最新です ✅)'}`
+    : 'まだ一度もバックアップしていません ⚠️';
+
   el.innerHTML = `
     <div class="back-row"><button class="btn-back" id="btn-back">‹ 設定に戻る</button></div>
     <h2 class="section-title">📦 いまのデータ</h2>
     <div class="card" style="font-size:14px">
       旅行 ${counts.trips}件・予算 ${counts.budgetItems}件・費用 ${counts.expenses}件<br>
       現金 ${counts.cashEntries}件・カテゴリ ${counts.categories}件
+      <div class="${last && changes === 0 ? 'protect-ok' : 'protect-warn'}" style="margin-top:8px;font-size:13px;font-weight:600">${lastText}</div>
     </div>
-    <h2 class="section-title">💾 エクスポート(バックアップ作成)</h2>
+    <h2 class="section-title">💾 バックアップを保存</h2>
     <div class="card">
-      <p class="hint">全データを1つのJSONファイルとしてダウンロードします。機種変更や万一の故障に備えて、Google Drive等に保管しておくのがおすすめです。<br>
-      ⚠️ スプレッドシート同期の設定(URL・合言葉)も含まれます。ファイルの共有にはご注意ください。</p>
-      <button class="btn-primary" id="btn-export" style="width:100%">💾 JSONファイルをダウンロード</button>
+      <p class="hint">全データを1つのファイルにまとめて保存します。スマホでは共有メニューが開くので、<b>「ドライブ」(Googleドライブ)</b>を選んで保存するのがおすすめです。データが消えても、このファイルからいつでも元に戻せます。<br>
+      ⚠️ スプレッドシート同期の設定(URL・合言葉)も含まれます。ファイルを他の人に渡さないでください。</p>
+      <button class="btn-primary" id="btn-backup-share" style="width:100%">📤 バックアップを保存する(Googleドライブなど)</button>
+      <button class="btn-add-row" id="btn-export" style="margin-top:10px">💾 この端末にファイルとしてダウンロード</button>
     </div>
     <h2 class="section-title">📂 インポート(復元)</h2>
     <div class="card">
@@ -2526,19 +2687,14 @@ async function renderBackup() {
 
   el.querySelector('#btn-back').addEventListener('click', () => navigate('/settings'));
 
-  /* --- エクスポート --- */
-  el.querySelector('#btn-export').addEventListener('click', async () => {
-    const data = {};
-    for (const s of BACKUP_STORES) data[s] = await db.getAll(s);
-    const payload = { app: 'tabi-budget', version: 1, exportedAt: new Date().toISOString(), data };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `tabisaifu_backup_${todayISO()}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    toast('バックアップをダウンロードしました 💾');
-  });
+  /* --- バックアップ保存(共有メニュー / ダウンロード) --- */
+  const afterBackup = async (ok) => {
+    if (!ok) return;
+    preserveScrollY = window.scrollY;
+    await renderRoute(); /* 最終バックアップ表示を更新 */
+  };
+  el.querySelector('#btn-backup-share').addEventListener('click', async () => afterBackup(await runBackup('auto')));
+  el.querySelector('#btn-export').addEventListener('click', async () => afterBackup(await runBackup('download')));
 
   /* --- インポート --- */
   const fileInput = el.querySelector('#import-file');
@@ -2592,14 +2748,19 @@ async function renderSettings() {
   const el = document.createElement('div');
   el.innerHTML = `
     <div class="back-row"><button class="btn-back" id="btn-back">‹ ホームに戻る</button></div>
+    <h2 class="section-title">🛡️ データの保護</h2>
+    <div class="card" style="font-size:13px;line-height:1.7">
+      <div id="persist-info">確認中…</div>
+      <div id="backup-info"></div>
+    </div>
     <h2 class="section-title">データ</h2>
     <div class="settings-list">
       <button class="settings-item" id="si-categories"><span class="s-icon">🏷️</span><span class="s-label">カテゴリ管理</span><span class="badge-soon">›</span></button>
-      <button class="settings-item" id="si-backup"><span class="s-icon">💾</span><span class="s-label">JSONエクスポート/インポート</span><span class="badge-soon">›</span></button>
+      <button class="settings-item" id="si-backup"><span class="s-icon">💾</span><span class="s-label">バックアップ・復元</span><span class="badge-soon">›</span></button>
       <button class="settings-item" id="si-sync"><span class="s-icon">📤</span><span class="s-label">スプレッドシート同期</span><span class="badge-soon" id="sync-badge">›</span></button>
     </div>
     <div class="about">
-      <div>旅財布 v1.1.0</div>
+      <div>旅財布 v1.2.0</div>
       <div class="storage" id="storage-info">ストレージ使用量を確認中…</div>
       <div class="storage" id="sw-info"></div>
     </div>`;
@@ -2612,6 +2773,22 @@ async function renderSettings() {
     const badge = el.querySelector('#sync-badge');
     if (badge && n > 0) badge.textContent = `未同期 ${n}件`;
   });
+
+  /* データの保護状況 */
+  const persistInfo = el.querySelector('#persist-info');
+  requestPersistentStorage().then((granted) => {
+    if (granted === true) {
+      persistInfo.innerHTML = '<span class="protect-ok">自動削除の防止: 有効 ✅</span><br><span class="hint">容量が少なくなっても、ブラウザがデータを勝手に消さないよう設定済みです</span>';
+    } else if (granted === false) {
+      persistInfo.innerHTML = '<span class="protect-warn">自動削除の防止: 未許可 ⚠️</span><br><span class="hint">ホーム画面に追加したアプリから開くと許可されやすくなります。こまめにバックアップしてください</span>';
+    } else {
+      persistInfo.innerHTML = '<span class="protect-warn">自動削除の防止: この環境では利用できません</span>';
+    }
+  });
+  const { last: lastBk, changes: bkChanges } = backupState();
+  el.querySelector('#backup-info').innerHTML = lastBk
+    ? `<span class="${bkChanges === 0 ? 'protect-ok' : 'protect-warn'}">最終バックアップ: ${fmtDateTime(lastBk)}${bkChanges > 0 ? `(その後 ${bkChanges}件の変更)` : ' ✅'}</span>`
+    : '<span class="protect-warn">バックアップ: まだ一度も保存していません ⚠️</span>';
 
   if (navigator.storage?.estimate) {
     navigator.storage.estimate().then(({ usage, quota }) => {
@@ -2652,6 +2829,8 @@ async function boot() {
   await seedCategoriesIfEmpty();
   if (db.isMemoryMode()) {
     document.getElementById('mem-banner').hidden = false;
+  } else {
+    requestPersistentStorage(); /* ブラウザによる自動削除を防ぐ(結果は設定画面で確認できる) */
   }
   await renderRoute();
 
