@@ -592,36 +592,47 @@ function wireBackupBanner(el) {
   });
 }
 
-async function buildBackupFile() {
+/* forShare=true: 共有メニュー用。ChromeはJSONファイルの共有を拒否するため、
+   中身は同じままテキストファイル(.txt)として作る。取り込みは.txtのままでできる */
+async function buildBackupFile(forShare = false) {
   const data = {};
   for (const s of BACKUP_STORES) data[s] = await db.getAll(s);
   const payload = { app: 'tabi-budget', version: 1, exportedAt: new Date().toISOString(), data };
-  return new File([JSON.stringify(payload, null, 2)], `tabisaifu_backup_${todayISO()}.json`,
-                  { type: 'application/json' });
+  const base = `tabisaifu_backup_${todayISO()}`;
+  return forShare
+    ? new File([JSON.stringify(payload, null, 2)], `${base}.txt`, { type: 'text/plain' })
+    : new File([JSON.stringify(payload, null, 2)], `${base}.json`, { type: 'application/json' });
 }
 
-/* スマホの共有メニュー(Googleドライブ等)で保存。非対応ならダウンロード。成功したらtrue */
+/* スマホの共有メニュー(Googleドライブ等)で保存。使えなければダウンロードに切り替える。成功したらtrue */
 async function runBackup(mode = 'auto') {
   try {
-    const file = await buildBackupFile();
-    if (mode !== 'download' && navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: '旅財布のバックアップ' });
-      } catch (err) {
-        if (err.name === 'AbortError') { toast('バックアップをキャンセルしました'); return false; }
-        throw err;
+    let shareFailed = false;
+    if (mode !== 'download' && navigator.share) {
+      const shareFile = await buildBackupFile(true);
+      if (!navigator.canShare || navigator.canShare({ files: [shareFile] })) {
+        try {
+          await navigator.share({ files: [shareFile], title: '旅財布のバックアップ' });
+          markBackedUp();
+          toast('バックアップを保存しました 💾');
+          return true;
+        } catch (err) {
+          if (err.name === 'AbortError') { toast('バックアップをキャンセルしました'); return false; }
+          console.warn('共有に失敗したため、ダウンロードに切り替えます:', err);
+          shareFailed = true;
+        }
       }
-      markBackedUp();
-      toast('バックアップを保存しました 💾');
-      return true;
     }
+    const file = await buildBackupFile(false);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(file);
     a.download = file.name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     markBackedUp();
-    toast('バックアップをダウンロードしました 💾');
+    toast(shareFailed
+      ? '共有メニューが使えなかったため、ダウンロードフォルダに保存しました 💾'
+      : 'バックアップをダウンロードしました 💾');
     return true;
   } catch (err) {
     console.error('バックアップに失敗:', err);
@@ -2673,16 +2684,16 @@ async function renderBackup() {
     </div>
     <h2 class="section-title">💾 バックアップを保存</h2>
     <div class="card">
-      <p class="hint">全データを1つのファイルにまとめて保存します。スマホでは共有メニューが開くので、<b>「ドライブ」(Googleドライブ)</b>を選んで保存するのがおすすめです。データが消えても、このファイルからいつでも元に戻せます。<br>
+      <p class="hint">全データを1つのファイルにまとめて保存します。スマホでは共有メニューが開くので、<b>「ドライブ」(Googleドライブ)</b>を選んで保存するのがおすすめです。データが消えても、このファイルからいつでも元に戻せます。共有メニューで保存したファイルは「.txt」になりますが、中身は同じで、そのまま取り込めます。<br>
       ⚠️ スプレッドシート同期の設定(URL・合言葉)も含まれます。ファイルを他の人に渡さないでください。</p>
       <button class="btn-primary" id="btn-backup-share" style="width:100%">📤 バックアップを保存する(Googleドライブなど)</button>
       <button class="btn-add-row" id="btn-export" style="margin-top:10px">💾 この端末にファイルとしてダウンロード</button>
     </div>
     <h2 class="section-title">📂 インポート(復元)</h2>
     <div class="card">
-      <p class="hint">バックアップしたJSONファイルを取り込みます。同じIDのデータは上書き、無いものは追加されます(今あるデータが勝手に消えることはありません)。</p>
+      <p class="hint">バックアップしたファイル(.json または .txt)を取り込みます。同じIDのデータは上書き、無いものは追加されます(今あるデータが勝手に消えることはありません)。</p>
       <button class="btn-add-row" id="btn-import">📂 JSONファイルを選んで取り込む</button>
-      <input type="file" id="import-file" accept=".json,application/json" hidden>
+      <input type="file" id="import-file" accept=".json,.txt,application/json,text/plain" hidden>
     </div>`;
 
   el.querySelector('#btn-back').addEventListener('click', () => navigate('/settings'));
@@ -2760,7 +2771,7 @@ async function renderSettings() {
       <button class="settings-item" id="si-sync"><span class="s-icon">📤</span><span class="s-label">スプレッドシート同期</span><span class="badge-soon" id="sync-badge">›</span></button>
     </div>
     <div class="about">
-      <div>旅財布 v1.2.0</div>
+      <div>旅財布 v1.2.1</div>
       <div class="storage" id="storage-info">ストレージ使用量を確認中…</div>
       <div class="storage" id="sw-info"></div>
     </div>`;
