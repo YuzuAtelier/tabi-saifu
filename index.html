@@ -367,6 +367,36 @@
   .protect-ok { color: #047857; }
   .protect-warn { color: #b45309; }
 
+  /* ===== 要確認の印(日程変更で見直しが必要になった予算) ===== */
+  .review-badge { color: #b45309; font-weight: 700; }
+  .review-banner {
+    background: #fff7ed; border: 1.5px solid #fed7aa; border-radius: var(--radius);
+    padding: 12px 16px; margin-top: 12px; font-size: 13px; color: #9a3412; line-height: 1.6;
+  }
+  .review-banner b { font-size: 14px; }
+
+  /* ===== 日程変更の確認画面 ===== */
+  .ds-overlay {
+    position: fixed; inset: 0; z-index: 30; background: rgba(15, 23, 42, .45);
+    overflow-y: auto; padding: 24px 12px calc(24px + env(safe-area-inset-bottom));
+  }
+  .ds-sheet {
+    max-width: 640px; margin: 0 auto; background: var(--c-bg);
+    border-radius: var(--radius); padding: 18px 16px; box-shadow: var(--shadow);
+  }
+  .ds-title { font-size: 17px; font-weight: 800; margin-bottom: 4px; }
+  .ds-range { font-size: 13px; color: var(--c-text-sub); line-height: 1.7; }
+  .ds-row { padding: 10px 0; border-bottom: 1px solid var(--c-line); }
+  .ds-row:last-child { border-bottom: none; }
+  .ds-row.warn { background: #fff7ed; border: 1.5px solid #fdba74; border-radius: 12px; padding: 10px 12px; margin: 6px 0; }
+  .ds-row-top { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+  .ds-row-top .t { font-weight: 600; min-width: 0; }
+  .ds-row-top .a { white-space: nowrap; font-weight: 700; }
+  .ds-dates { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; color: var(--c-text-sub); }
+  .ds-dates input { width: auto; flex: 1; max-width: 180px; padding: 6px 8px; font-size: 14px; }
+  .ds-note { margin-top: 6px; font-size: 12px; font-weight: 700; color: #b45309; line-height: 1.6; white-space: pre-line; }
+  .ds-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+
   /* ===== トースト ===== */
   #toast {
     position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom));
@@ -722,6 +752,24 @@ function nights(trip) {
 function daysUntil(iso) {
   return Math.round((new Date(iso + 'T00:00:00') - new Date(todayISO() + 'T00:00:00')) / 864e5);
 }
+function addDaysISO(iso, n) {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function daysBetweenISO(a, b) {
+  return Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
+}
+/* 旅行の日程を変えたときの日付の移し先。旧最終日以降の日付は新しい最終日からの日数を、
+   それ以外は新しい出発日からの日数を保つ。日時(YYYY-MM-DDTHH:MM)は時刻をそのまま残す */
+function shiftDateForTrip(iso, oldS, oldE, newS, newE) {
+  if (!iso) return iso;
+  const date = iso.slice(0, 10), rest = iso.slice(10);
+  const shifted = (oldS !== oldE && date >= oldE)
+    ? addDaysISO(newE, daysBetweenISO(oldE, date))
+    : addDaysISO(newS, daysBetweenISO(oldS, date));
+  return shifted + rest;
+}
 /* 日本円換算レートを取得。purpose: 'budget'=予算用 / 'actual'=実績用
    実績レートが未設定の通貨は予算レートにフォールバックする */
 function rateFor(trip, code, purpose) {
@@ -907,6 +955,148 @@ async function renderHome() {
     c.addEventListener('click', () => { queueScrollTo(c.dataset.id); navigate('/trip/' + c.dataset.id); }));
   el.querySelector('#fab-add').addEventListener('click', () => navigate('/trip-form'));
   return el;
+}
+
+/* =========================================================
+ * 日程変更:予算・宿泊地・フライト/鉄道の日付を一緒にずらす
+ * 費用(実際の記録)はずらさない
+ * =======================================================*/
+/* 日程を変えたときの移し先を計算する。日付の入ったものが何もなければnull */
+async function planDateShift(trip, record) {
+  const oldS = trip.startDate, oldE = trip.endDate, newS = record.startDate, newE = record.endDate;
+  const shift = (iso) => shiftDateForTrip(iso, oldS, oldE, newS, newE);
+  const budgets = (await db.getByIndex('budgetItems', 'tripId', trip.id))
+    .filter((b) => b.date)
+    .sort((a, b) => a.date.localeCompare(b.date) || compareBySortOrder(a, b));
+
+  /* 宿泊地・フライトをフォームで手直ししていたら、その入力を優先してずらさない */
+  const same = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
+  const shiftStays = same(record.stays, trip.stays);
+  const shiftFlights = same(record.flights, trip.flights);
+  const stays = (trip.stays || []).map((s) => ({
+    old: s,
+    next: shiftStays ? { ...s, checkIn: shift(s.checkIn), checkOut: shift(s.checkOut) } : null,
+    oldNights: s.checkIn && s.checkOut ? daysBetweenISO(s.checkIn, s.checkOut) : null,
+    newNights: s.checkIn && s.checkOut ? daysBetweenISO(shift(s.checkIn), shift(s.checkOut)) : null,
+  }));
+  const flights = shiftFlights
+    ? (trip.flights || []).map((f) => ({ old: f, next: { ...f, depDateTime: shift(f.depDateTime), arrDateTime: shift(f.arrDateTime) } }))
+    : [];
+  if (!budgets.length && !stays.length && !flights.length) return null;
+
+  const lengthChanged = daysBetweenISO(oldS, oldE) !== daysBetweenISO(newS, newE);
+  return { trip, oldS, oldE, newS, newE, shift, budgets, stays, flights, shiftStays, shiftFlights, lengthChanged };
+}
+
+/* 予算を新しい日付(date)に移したとき、見直しが必要な理由を返す(なければ空) */
+function reviewReasons(plan, b, date) {
+  const reasons = [];
+  if (b.categoryId === 'cat_hotel') {
+    const st = plan.stays.find((s) => s.old.checkIn === b.date && s.oldNights != null && s.newNights !== s.oldNights);
+    if (st) {
+      reasons.push(`宿泊数が${st.oldNights}泊 → ${st.newNights}泊に変わります。数量(今は${b.quantity})と金額を見直してください`);
+    } else if (!plan.stays.length && plan.lengthChanged && b.quantity > 1 && addDaysISO(date, b.quantity) > plan.newE) {
+      reasons.push(`数量(${b.quantity})が新しい日程に収まらない可能性があります。泊数と金額を見直してください`);
+    }
+  }
+  if (date && (date < plan.newS || date > plan.newE)) {
+    reasons.push(`新しい旅行期間(${fmtDate(plan.newS)}〜${fmtDate(plan.newE)})の外です。日付を見直してください`);
+  }
+  return reasons;
+}
+
+/* 確認画面を出す。戻り値: { action: 'shift' | 'keep' | 'cancel', dates: {予算ID: 新しい日付} } */
+function openDateShiftDialog(plan, cats) {
+  const catMap = Object.fromEntries(cats.map((c) => [c.id, c]));
+  const span = (s, e) => `${fmtDateFull(s)} 〜 ${fmtDateFull(e)}(${daysBetweenISO(s, e)}泊${daysBetweenISO(s, e) + 1}日)`;
+  const budgetRows = plan.budgets.map((b) => {
+    const cat = catMap[b.categoryId];
+    return `
+      <div class="ds-row" data-id="${esc(b.id)}">
+        <div class="ds-row-top">
+          <span class="t">${cat ? esc(cat.icon) : '🏷️'} ${esc(b.title) || (cat ? esc(cat.name) : '')}</span>
+          <span class="a">${fmtCurrencyAmount(plan.trip, b.currency, b.amount)}</span>
+        </div>
+        <div class="ds-dates">${fmtDate(b.date)} →
+          <input type="date" class="ds-date" value="${esc(plan.shift(b.date))}"></div>
+        <div class="ds-note" hidden></div>
+      </div>`;
+  }).join('');
+  const stayRows = plan.stays.map((s) => {
+    const changed = s.newNights !== s.oldNights;
+    const after = plan.shiftStays
+      ? `${fmtDate(s.next.checkIn)}〜${fmtDate(s.next.checkOut)}${s.newNights != null ? `(${s.newNights}泊)` : ''}`
+      : '入力した内容のまま';
+    return `
+      <div class="ds-row ${plan.shiftStays && changed ? 'warn' : ''}">
+        <div class="ds-row-top"><span class="t">🏨 ${esc(s.old.name)}</span></div>
+        <div class="ds-dates">${fmtDate(s.old.checkIn)}〜${fmtDate(s.old.checkOut)}${s.oldNights != null ? `(${s.oldNights}泊)` : ''} → ${after}</div>
+        ${plan.shiftStays && changed ? `<div class="ds-note">⚠️ 宿泊数が${s.oldNights}泊 → ${s.newNights}泊に変わります</div>` : ''}
+      </div>`;
+  }).join('');
+  const flightRows = plan.flights.map((f) => `
+      <div class="ds-row">
+        <div class="ds-row-top"><span class="t">✈️ ${esc(f.old.flightNo || [f.old.depAirport, f.old.arrAirport].filter(Boolean).join('→'))}</span></div>
+        <div class="ds-dates">${fmtDT(f.old.depDateTime)} → ${fmtDT(f.next.depDateTime)}</div>
+      </div>`).join('');
+
+  const ov = document.createElement('div');
+  ov.className = 'ds-overlay';
+  ov.innerHTML = `
+    <div class="ds-sheet" role="dialog" aria-label="日程の変更">
+      <div class="ds-title">📅 日程が変わります</div>
+      <div class="ds-range">変更前:${span(plan.oldS, plan.oldE)}<br>変更後:${span(plan.newS, plan.newE)}</div>
+      <div class="review-banner" id="ds-summary" hidden></div>
+      ${plan.budgets.length ? `
+      <h2 class="section-title">💰 予算の日付(必要なら直せます)</h2>
+      <div class="card" style="padding:4px 14px">${budgetRows}</div>` : ''}
+      ${stayRows ? `<h2 class="section-title">🏨 宿泊地</h2><div class="card" style="padding:4px 14px">${stayRows}</div>` : ''}
+      ${flightRows ? `<h2 class="section-title">✈️ フライト/鉄道</h2><div class="card" style="padding:4px 14px">${flightRows}</div>` : ''}
+      <p class="hint" style="margin-top:12px">日付が未定の予算と、費用(実際に使った記録)の日付は変わりません。金額と数量は自動では変えません。</p>
+      <div class="ds-actions">
+        <button class="btn-primary" id="ds-shift" style="width:100%">予算などもずらして保存する</button>
+        <button class="btn-secondary" id="ds-keep">日付はそのままで保存する</button>
+        <button class="btn-back" id="ds-cancel" style="text-align:center">キャンセル</button>
+      </div>
+    </div>`;
+
+  /* 日付を直すたびに、要確認の表示を更新する */
+  const refresh = () => {
+    let n = 0;
+    ov.querySelectorAll('.ds-row[data-id]').forEach((row) => {
+      const b = plan.budgets.find((x) => x.id === row.dataset.id);
+      const reasons = reviewReasons(plan, b, row.querySelector('.ds-date').value);
+      const note = row.querySelector('.ds-note');
+      row.classList.toggle('warn', reasons.length > 0);
+      note.hidden = !reasons.length;
+      note.textContent = reasons.map((r) => `⚠️ 変更が必要:${r}`).join('\n');
+      if (reasons.length) n++;
+    });
+    const sum = ov.querySelector('#ds-summary');
+    sum.hidden = n === 0;
+    sum.innerHTML = `<b>⚠️ 見直しが必要な予算が${n}件あります</b><br>オレンジ色の予算は、保存後も予算一覧に「要確認」の印が残ります。内容を直して保存すると印が消えます。`;
+  };
+  ov.querySelectorAll('.ds-date').forEach((inp) => inp.addEventListener('input', refresh));
+  refresh();
+
+  document.body.appendChild(ov);
+  document.body.style.overflow = 'hidden';
+  return new Promise((resolve) => {
+    /* 戻るボタンなどで画面を離れたらキャンセル扱いにする(確認画面が次の画面に残らないように) */
+    const onLeave = () => close('cancel');
+    const close = (action) => {
+      window.removeEventListener('hashchange', onLeave);
+      const dates = {};
+      ov.querySelectorAll('.ds-row[data-id]').forEach((row) => { dates[row.dataset.id] = row.querySelector('.ds-date').value || null; });
+      document.body.style.overflow = '';
+      ov.remove();
+      resolve({ action, dates });
+    };
+    window.addEventListener('hashchange', onLeave);
+    ov.querySelector('#ds-shift').addEventListener('click', () => close('shift'));
+    ov.querySelector('#ds-keep').addEventListener('click', () => close('keep'));
+    ov.querySelector('#ds-cancel').addEventListener('click', () => close('cancel'));
+  });
 }
 
 /* =========================================================
@@ -1141,8 +1331,37 @@ async function renderTripForm(params) {
       createdAt: trip?.createdAt || now,
       updatedAt: now,
     };
+
+    /* 日程を変えたら、予算・宿泊地・フライト/鉄道の日付をずらすか確認する */
+    let reviewCount = 0;
+    const plan = editing && (trip.startDate !== startDate || trip.endDate !== endDate)
+      ? await planDateShift(trip, record) : null;
+    if (plan) {
+      const { action, dates } = await openDateShiftDialog(plan, await db.getAll('categories'));
+      if (action === 'cancel') return;
+      for (const b of plan.budgets) {
+        const date = action === 'shift' ? (dates[b.id] || b.date) : b.date;
+        const reasons = action === 'shift'
+          ? reviewReasons(plan, b, date)
+          : reviewReasons(plan, { ...b, categoryId: null }, date); /* そのままなら期間外だけ確認 */
+        const next = { ...b, date };
+        /* 見直していない前回の印は残す */
+        if (reasons.length) next.reviewNote = reasons.join(' / ');
+        if (date !== b.date || reasons.length) {
+          await db.put('budgetItems', next);
+          if (reasons.length) reviewCount++;
+        }
+      }
+      if (action === 'shift') {
+        if (plan.shiftStays) record.stays = plan.stays.map((s) => s.next);
+        if (plan.shiftFlights) record.flights = plan.flights.map((f) => f.next);
+      }
+    }
+
     await db.put('trips', record);
-    toast(editing ? '旅行を更新しました ✅' : '旅行を登録しました 🎉');
+    toast(reviewCount
+      ? `旅行を更新しました。見直しが必要な予算が${reviewCount}件あります ⚠️`
+      : (editing ? '旅行を更新しました ✅' : '旅行を登録しました 🎉'));
     navigate('/trip/' + record.id);
   });
 
@@ -1175,7 +1394,9 @@ async function renderTripDetail(params) {
 
   const bItems = await db.getByIndex('budgetItems', 'tripId', trip.id);
   const budgetTotalJPY = bItems.reduce((s, it) => s + it.amount * rateFor(trip, it.currency, 'budget'), 0);
-  const budgetNote = bItems.length ? `¥${fmtMoney(budgetTotalJPY)}` : '未設定';
+  const budgetReviewCount = bItems.filter((b) => b.reviewNote).length;
+  const budgetNote = (bItems.length ? `¥${fmtMoney(budgetTotalJPY)}` : '未設定') +
+    (budgetReviewCount ? `<br><span class="review-badge">⚠️ 要確認${budgetReviewCount}件</span>` : '');
   const eItems = await db.getByIndex('expenses', 'tripId', trip.id);
   const spentJPY = eItems.reduce((s, it) => s + (it.amountJPY ?? it.amount * rateFor(trip, it.currency, 'actual')), 0);
   const expenseNote = eItems.length ? `¥${fmtMoney(spentJPY)}` : '未記録';
@@ -1368,11 +1589,13 @@ async function renderBudgetList(params) {
   const toJPY = (it) => it.amount * rateFor(trip, it.currency, 'budget');
   const totalJPY = items.reduce((sum, it) => sum + toJPY(it), 0);
   const hasForeign = items.some((it) => it.currency !== 'JPY');
+  const reviewCount = items.filter((it) => it.reviewNote).length;
 
   /* showCat=true: 行にカテゴリの絵文字と名前を出す(日付順表示用) */
   const rowInner = (it, showCat) => {
     const cat = catMap[it.categoryId];
     const parts = [];
+    if (it.reviewNote) parts.push('<span class="review-badge">⚠️ 要確認</span>');
     if (!showCat && it.date) parts.push(fmtDate(it.date));
     if (showCat && cat) parts.push(cat.name);
     if (it.quantity > 1) parts.push(`${fmtCurrencyAmount(trip, it.currency, it.unitPrice)} × ${it.quantity}`);
@@ -1432,6 +1655,7 @@ async function renderBudgetList(params) {
       <div class="tc-amount">¥${fmtMoney(totalJPY)}</div>
       <div class="tc-sub">${items.length}件の予算${hasForeign ? '・外貨は予算レートで換算' : ''}</div>
     </div>
+    ${reviewCount ? `<div class="review-banner"><b>⚠️ 見直しが必要な予算が${reviewCount}件あります</b><br>日程の変更で、泊数や日付が合わなくなった可能性があります。「要確認」の予算を開いて内容を直し、保存すると印が消えます。</div>` : ''}
     ${budgetReorder ? reorderBarHtml : (items.length ? `
     <div class="seg" style="margin:14px 0 0">
       <button type="button" data-s="date" class="${sortMode === 'date' ? 'active' : ''}">日付順</button>
@@ -1500,6 +1724,8 @@ async function renderBudgetForm(params) {
 
   el.innerHTML = `
     <div class="back-row"><button class="btn-back" id="btn-back">‹ 予算一覧に戻る</button></div>
+    ${item?.reviewNote ? `
+    <div class="review-banner" style="margin:0 0 12px"><b>⚠️ 見直しが必要です</b><br>${esc(item.reviewNote)}<br>内容を確認して「更新する」を押すと、この印は消えます。</div>` : ''}
     <form id="b-form" novalidate>
       <div class="form-card">
         <label class="field"><span class="f-label">カテゴリ *</span><select id="b-cat">${catOptions}</select></label>
@@ -1632,6 +1858,8 @@ async function renderBudgetForm(params) {
       currency: q('#b-cur').value || 'JPY',
       memo: q('#b-memo').value.trim(),
     };
+    /* 同じ日のままなら並び順を引き継ぐ(要確認の印は、保存した時点で見直し済みとして消す) */
+    if (item?.sortOrder != null && (item.date || null) === record.date) record.sortOrder = item.sortOrder;
     await db.put('budgetItems', record);
     toast(editing ? '予算を更新しました ✅' : '予算を追加しました 💰');
     queueScrollTo(record.id);
@@ -1907,6 +2135,8 @@ async function renderExpenseForm(params) {
       syncStatus: 'pending', /* 編集も再同期対象(シート側は同じIDの行を上書き) */
       createdAt: item?.createdAt || new Date().toISOString(),
     };
+    /* 同じ日のままなら並び順を引き継ぐ */
+    if (item?.sortOrder != null && item.date === record.date) record.sortOrder = item.sortOrder;
     await db.put('expenses', record);
     await db.put('settings', { key: 'lastcur_' + trip.id, value: selCur });
     toast(editing ? '記録を更新しました ✅' : '記録しました 📝');
@@ -2814,7 +3044,7 @@ async function renderSettings() {
       <button class="settings-item" id="si-sync"><span class="s-icon">📤</span><span class="s-label">スプレッドシート同期</span><span class="badge-soon" id="sync-badge">›</span></button>
     </div>
     <div class="about">
-      <div>旅財布 v1.3.0</div>
+      <div>旅財布 v1.4.0</div>
       <div class="storage" id="storage-info">ストレージ使用量を確認中…</div>
       <div class="storage" id="sw-info"></div>
     </div>`;
